@@ -192,11 +192,11 @@ supabase functions deploy enrich-practice-website
 supabase functions deploy process-enrichment-queue
 ```
 
-Required Supabase function secrets:
+Supabase provides the project URL and service role key to hosted Edge Functions as default reserved secrets. Do not add custom secrets named `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` in the Dashboard; Supabase blocks names with the `SUPABASE_` prefix.
+
+Only add the custom Google Places secret:
 
 ```bash
-supabase secrets set SUPABASE_URL=https://PROJECT_REF.supabase.co
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 supabase secrets set GOOGLE_PLACES_API_KEY=your-google-places-api-key
 ```
 
@@ -220,7 +220,7 @@ Daily:  import-npi-dentists
 Hourly: process-enrichment-queue
 ```
 
-Cron requests should use a server-side bearer token such as `SUPABASE_SERVICE_ROLE_KEY`. Manual frontend requests require an authenticated Supabase user session.
+Cron requests should use a server-side bearer token from the Supabase Dashboard service role key. Manual frontend requests require an authenticated Supabase user session.
 
 ## Lead Scoring
 
