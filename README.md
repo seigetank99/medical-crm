@@ -176,6 +176,8 @@ After import, the function creates `enrichment_queue` jobs:
 
 `enrich-google-places` uses the official Google Places API. The `GOOGLE_PLACES_API_KEY` must stay in Supabase secrets and must never be added to Vite environment variables. Google Places API calls may cost money, so the frontend shows a warning before manual Google enrichment.
 
+Google Places is optional. If `GOOGLE_PLACES_API_KEY` is not set, NPI imports will skip creating Google enrichment jobs, and the queue processor will complete any existing Google jobs without calling Google.
+
 `enrich-practice-website` fetches the dentist/practice's own public website server-side. It extracts public email, practice domain, owner/founder signals, education clues, graduation-year clues, and multi-location signals. It stores source metadata in `data_sources` and recalculates lead score.
 
 `process-enrichment-queue` processes pending jobs due now, retries failed jobs up to three attempts, and returns processing totals.
@@ -194,7 +196,7 @@ supabase functions deploy process-enrichment-queue
 
 Supabase provides the project URL and service role key to hosted Edge Functions as default reserved secrets. Do not add custom secrets named `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` in the Dashboard; Supabase blocks names with the `SUPABASE_` prefix.
 
-Only add the custom Google Places secret:
+Only add the custom Google Places secret if Google enrichment is enabled:
 
 ```bash
 supabase secrets set GOOGLE_PLACES_API_KEY=your-google-places-api-key

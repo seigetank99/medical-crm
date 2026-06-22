@@ -34,6 +34,7 @@ export async function enqueuePostImportJobs(supabase, dentist) {
   }
 
   const needsGoogle =
+    hasGooglePlacesKey() &&
     Number(dentist.lead_score || 0) >= 20 &&
     (!dentist.website || dentist.google_rating == null || dentist.google_review_count == null)
 
@@ -46,4 +47,8 @@ export async function enqueuePostImportJobs(supabase, dentist) {
   }
 
   return jobs
+}
+
+export function hasGooglePlacesKey() {
+  return Boolean(Deno.env.get('GOOGLE_PLACES_API_KEY'))
 }

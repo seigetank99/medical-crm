@@ -1,6 +1,6 @@
 import { corsHeaders, createServiceClient, errorResponse, jsonResponse, readJson, requireAuthorizedRequest } from '../_shared/http.js'
 import { enrichGoogleDentist, enrichOsmDentist, enrichWebsiteDentist } from '../_shared/enrichment.js'
-import { enqueueJob } from '../_shared/queue.js'
+import { enqueueJob, hasGooglePlacesKey } from '../_shared/queue.js'
 import { scoreDentist } from '../_shared/scoring.js'
 
 Deno.serve(async (req) => {
@@ -63,6 +63,7 @@ async function runJob(supabase, job) {
     return result
   }
   if (job.job_type === 'google_places_enrichment') {
+    if (!hasGooglePlacesKey()) return { skipped: true, reason: 'GOOGLE_PLACES_API_KEY is not configured.' }
     const result = await enrichGoogleDentist(supabase, job.dentist_id)
     await enqueueWebsiteIfPossible(supabase, job.dentist_id)
     return result
