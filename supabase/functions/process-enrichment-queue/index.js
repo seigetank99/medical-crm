@@ -1,5 +1,6 @@
 import { corsHeaders, createServiceClient, errorResponse, jsonResponse, readJson, requireAuthorizedRequest } from '../_shared/http.js'
-import { enrichGoogleDentist, enrichOsmDentist } from '../_shared/enrichment.js'
+import { enrichGoogleDentist, enrichOsmDentist, enrichWebsiteDentist } from '../_shared/enrichment.js'
+import { enqueueJob } from '../_shared/queue.js'
 import { scoreDentist } from '../_shared/scoring.js'
 
 Deno.serve(async (req) => {
@@ -55,9 +56,24 @@ Deno.serve(async (req) => {
 
 async function runJob(supabase, job) {
   if (job.job_type === 'lead_scoring') return scoreDentist(supabase, job.dentist_id)
-  if (job.job_type === 'osm_enrichment') return enrichOsmDentist(supabase, job.dentist_id)
-  if (job.job_type === 'google_places_enrichment') return enrichGoogleDentist(supabase, job.dentist_id)
+  if (job.job_type === 'website_enrichment') return enrichWebsiteDentist(supabase, job.dentist_id)
+  if (job.job_type === 'osm_enrichment') {
+    const result = await enrichOsmDentist(supabase, job.dentist_id)
+    await enqueueWebsiteIfPossible(supabase, job.dentist_id)
+    return result
+  }
+  if (job.job_type === 'google_places_enrichment') {
+    const result = await enrichGoogleDentist(supabase, job.dentist_id)
+    await enqueueWebsiteIfPossible(supabase, job.dentist_id)
+    return result
+  }
   throw new Error(`Unsupported job_type: ${job.job_type}`)
+}
+
+async function enqueueWebsiteIfPossible(supabase, dentistId) {
+  const { data, error } = await supabase.from('dentists').select('id, website').eq('id', dentistId).single()
+  if (error) throw error
+  if (data?.website) await enqueueJob(supabase, dentistId, 'website_enrichment')
 }
 
 async function retryFailedJobs(supabase) {

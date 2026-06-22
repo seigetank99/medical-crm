@@ -38,6 +38,12 @@ const baseColumns = `
   import_batch_id,
   osm_id,
   google_place_id,
+  practice_domain,
+  public_email,
+  owner_confidence,
+  education_school,
+  graduation_year_source,
+  data_sources,
   data_enriched_at,
   enrichment_status,
   enrichment_error,
@@ -399,18 +405,26 @@ export async function processEnrichmentQueue(retryFailed = false) {
   return invokePipelineFunction('process-enrichment-queue', { retryFailed })
 }
 
-export async function enrichSelectedDentist(dentistId, includeGooglePlaces = false) {
+export async function enrichSelectedDentist(dentistId, includeGooglePlaces = false, includeWebsite = false) {
   const osmResult = await invokePipelineFunction('enrich-osm-dentists', { dentist_id: dentistId })
-  if (osmResult.error || !includeGooglePlaces) return osmResult
+  if (osmResult.error) return osmResult
 
-  const googleResult = await invokePipelineFunction('enrich-google-places', { dentist_id: dentistId })
-  if (googleResult.error) return googleResult
+  const data = { osm: osmResult.data }
+
+  if (includeGooglePlaces) {
+    const googleResult = await invokePipelineFunction('enrich-google-places', { dentist_id: dentistId })
+    if (googleResult.error) return googleResult
+    data.google = googleResult.data
+  }
+
+  if (includeWebsite) {
+    const websiteResult = await invokePipelineFunction('enrich-practice-website', { dentist_id: dentistId })
+    if (websiteResult.error) return websiteResult
+    data.website = websiteResult.data
+  }
 
   return {
-    data: {
-      osm: osmResult.data,
-      google: googleResult.data,
-    },
+    data,
     error: '',
   }
 }

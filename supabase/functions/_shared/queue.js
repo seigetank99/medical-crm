@@ -41,5 +41,9 @@ export async function enqueuePostImportJobs(supabase, dentist) {
     jobs.push(await enqueueJob(supabase, dentist.id, 'google_places_enrichment'))
   }
 
+  if (dentist.website) {
+    jobs.push(await enqueueJob(supabase, dentist.id, 'website_enrichment'))
+  }
+
   return jobs
 }

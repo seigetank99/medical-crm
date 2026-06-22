@@ -60,7 +60,7 @@ The SQL file includes:
 - standardized `contact_status` values
 - singular dental specialty migration
 - `lead_score`, `last_contact_date`, and `follow_up_priority`
-- enrichment fields: `taxonomy_code`, `source_confidence`, `osm_id`, `google_place_id`, `data_enriched_at`, `enrichment_status`, and `enrichment_error`
+- enrichment fields: `taxonomy_code`, `source_confidence`, `osm_id`, `google_place_id`, `practice_domain`, `public_email`, `owner_confidence`, `education_school`, `graduation_year_source`, `data_sources`, `data_enriched_at`, `enrichment_status`, and `enrichment_error`
 - rebuilt `contact_notes` with `dentist_id bigint`
 - `crm_tasks`
 - `import_batches`
@@ -150,6 +150,7 @@ The pipeline includes these Supabase Edge Functions:
 import-npi-dentists
 enrich-osm-dentists
 enrich-google-places
+enrich-practice-website
 process-enrichment-queue
 ```
 
@@ -169,10 +170,13 @@ After import, the function creates `enrichment_queue` jobs:
 - `lead_scoring` for all imported or updated records
 - `osm_enrichment` for records missing website or practice information
 - `google_places_enrichment` only for high-value records with `lead_score >= 20` that are missing website, rating, or review count
+- `website_enrichment` for records with a practice website
 
 `enrich-osm-dentists` uses Overpass/OpenStreetMap data and only fills missing website, phone, address, and practice fields when match confidence is high.
 
 `enrich-google-places` uses the official Google Places API. The `GOOGLE_PLACES_API_KEY` must stay in Supabase secrets and must never be added to Vite environment variables. Google Places API calls may cost money, so the frontend shows a warning before manual Google enrichment.
+
+`enrich-practice-website` fetches the dentist/practice's own public website server-side. It extracts public email, practice domain, owner/founder signals, education clues, graduation-year clues, and multi-location signals. It stores source metadata in `data_sources` and recalculates lead score.
 
 `process-enrichment-queue` processes pending jobs due now, retries failed jobs up to three attempts, and returns processing totals.
 
@@ -184,6 +188,7 @@ Install and authenticate the Supabase CLI, then deploy:
 supabase functions deploy import-npi-dentists
 supabase functions deploy enrich-osm-dentists
 supabase functions deploy enrich-google-places
+supabase functions deploy enrich-practice-website
 supabase functions deploy process-enrichment-queue
 ```
 

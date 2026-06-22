@@ -53,7 +53,13 @@ add column if not exists osm_id text,
 add column if not exists google_place_id text,
 add column if not exists data_enriched_at timestamptz,
 add column if not exists enrichment_status text,
-add column if not exists enrichment_error text;
+add column if not exists enrichment_error text,
+add column if not exists practice_domain text,
+add column if not exists public_email text,
+add column if not exists owner_confidence int default 0,
+add column if not exists education_school text,
+add column if not exists graduation_year_source text,
+add column if not exists data_sources jsonb default '{}'::jsonb;
 
 alter table public.dentists
 drop constraint if exists valid_follow_up_priority;
@@ -174,6 +180,7 @@ add constraint valid_enrichment_job_type
 check (job_type in (
   'osm_enrichment',
   'google_places_enrichment',
+  'website_enrichment',
   'lead_scoring'
 ));
 
@@ -204,6 +211,8 @@ create index if not exists dentists_import_batch_id_idx on public.dentists (impo
 create index if not exists dentists_google_place_id_idx on public.dentists (google_place_id);
 create index if not exists dentists_osm_id_idx on public.dentists (osm_id);
 create index if not exists dentists_enrichment_status_idx on public.dentists (enrichment_status);
+create index if not exists dentists_practice_domain_idx on public.dentists (practice_domain);
+create index if not exists dentists_public_email_idx on public.dentists (public_email);
 create index if not exists enrichment_queue_status_scheduled_for_idx
 on public.enrichment_queue (status, scheduled_for);
 create index if not exists enrichment_queue_dentist_id_idx

@@ -41,6 +41,7 @@ function ImportPage() {
   const [pipelineRunning, setPipelineRunning] = useState('')
   const [selectedDentistId, setSelectedDentistId] = useState('')
   const [includeGooglePlaces, setIncludeGooglePlaces] = useState(false)
+  const [includeWebsiteEnrichment, setIncludeWebsiteEnrichment] = useState(true)
 
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows])
   const invalidRows = rows.length - validRows.length
@@ -279,13 +280,25 @@ function ImportPage() {
             <input type="checkbox" checked={includeGooglePlaces} onChange={(event) => setIncludeGooglePlaces(event.target.checked)} />
             <span>Include Google Places enrichment</span>
           </label>
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={includeWebsiteEnrichment}
+              onChange={(event) => setIncludeWebsiteEnrichment(event.target.checked)}
+            />
+            <span>Extract public data from practice website</span>
+          </label>
           {includeGooglePlaces ? (
             <div className="notice">Google Places API calls may cost money. The API key stays server-side in Supabase secrets.</div>
           ) : null}
           <button
             type="button"
             className="primary-button"
-            onClick={() => handlePipelineAction('Selected dentist enrichment', () => enrichSelectedDentist(Number(selectedDentistId), includeGooglePlaces))}
+            onClick={() =>
+              handlePipelineAction('Selected dentist enrichment', () =>
+                enrichSelectedDentist(Number(selectedDentistId), includeGooglePlaces, includeWebsiteEnrichment),
+              )
+            }
             disabled={Boolean(pipelineRunning) || !selectedDentistId}
           >
             <Sparkles size={16} />

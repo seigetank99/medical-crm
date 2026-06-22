@@ -115,6 +115,57 @@ export async function enrichGoogleDentist(supabase, dentistId) {
   return { updated: true, confidence: match.confidence }
 }
 
+export async function enrichWebsiteDentist(supabase, dentistId) {
+  const { data: dentist, error: fetchError } = await supabase.from('dentists').select('*').eq('id', dentistId).single()
+  if (fetchError) throw fetchError
+  if (!dentist.website) throw new Error('Dentist does not have a website.')
+
+  const baseUrl = normalizeWebsiteUrl(dentist.website)
+  const domain = new URL(baseUrl).hostname.replace(/^www\./, '')
+  const pages = await fetchWebsitePages(baseUrl)
+  const combinedText = pages.map((page) => page.text).join('\n').slice(0, 60000)
+  const extracted = extractWebsiteSignals(combinedText, domain)
+  const ownerConfidence = calculateOwnerConfidence(combinedText, dentist)
+  const update = {
+    practice_domain: domain,
+    owner_confidence: Math.max(Number(dentist.owner_confidence || 0), ownerConfidence),
+    data_sources: {
+      ...(dentist.data_sources || {}),
+      website: {
+        domain,
+        pages: pages.map((page) => page.url),
+        enriched_at: new Date().toISOString(),
+        signals: extracted.signals,
+      },
+    },
+    enrichment_status: 'completed',
+    enrichment_error: null,
+    data_enriched_at: new Date().toISOString(),
+  }
+
+  if (!dentist.public_email && extracted.email) update.public_email = extracted.email
+  if (!dentist.email && extracted.email) update.email = extracted.email
+  if (!dentist.education_school && extracted.educationSchool) update.education_school = extracted.educationSchool
+  if (!dentist.graduation_year && extracted.graduationYear) {
+    update.graduation_year = extracted.graduationYear
+    update.graduation_year_source = 'practice_website'
+  }
+  if (!dentist.multi_location && extracted.multiLocation) update.multi_location = true
+
+  update.lead_score = calculateLeadScore({ ...dentist, ...update })
+
+  const { error } = await supabase.from('dentists').update(update).eq('id', dentist.id)
+  if (error) throw error
+
+  return {
+    updated: true,
+    domain,
+    pages: pages.length,
+    email: Boolean(extracted.email),
+    owner_confidence: update.owner_confidence,
+  }
+}
+
 function buildOverpassQuery(dentist) {
   const city = dentist.city || ''
   const state = dentist.state || ''
@@ -176,6 +227,116 @@ function buildGoogleQuery(dentist) {
   return [dentist.practice_name, [dentist.first_name, dentist.last_name].filter(Boolean).join(' '), dentist.city, dentist.state]
     .filter(Boolean)
     .join(' ')
+}
+
+async function fetchWebsitePages(baseUrl) {
+  const root = await fetchWebsitePage(baseUrl)
+  const rootUrl = new URL(baseUrl)
+  const links = extractInternalLinks(root.html, rootUrl)
+    .filter((url) => /about|team|doctor|dentist|contact|location|practice|meet/i.test(url))
+    .slice(0, 4)
+  const pages = [root]
+
+  for (const url of links) {
+    try {
+      pages.push(await fetchWebsitePage(url))
+    } catch {
+      // Ignore individual page failures; the root page still provides signal.
+    }
+  }
+
+  return pages
+}
+
+async function fetchWebsitePage(url) {
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'OmniHealth Medical CRM website enrichment',
+      Accept: 'text/html,application/xhtml+xml',
+    },
+    redirect: 'follow',
+  })
+  if (!response.ok) throw new Error(`Website fetch failed with ${response.status}.`)
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('text/html')) throw new Error('Website did not return HTML.')
+  const html = await response.text()
+  return { url: response.url || url, html, text: htmlToText(html) }
+}
+
+function extractWebsiteSignals(text, domain) {
+  const emails = [...new Set(text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [])]
+    .map((email) => email.toLowerCase())
+    .filter((email) => !/example|domain|sentry|wixpress|wordpress|schema/.test(email))
+  const domainEmail = emails.find((email) => email.endsWith(`@${domain}`))
+  const educationMatch = text.match(
+    /(NYU|Columbia|Tufts|Harvard|Boston University|University of Pennsylvania|Penn|Stony Brook|Rutgers|UCLA|USC|Howard|Temple|University at Buffalo|Buffalo|Nova Southeastern|Case Western|University of Maryland)[^.]{0,80}/i,
+  )
+  const graduationMatch = text.match(/\b(class of|graduated in|graduated from|received (?:his|her|their)?[^.]{0,40} in)\s+(19\d{2}|20\d{2})\b/i)
+  const multiLocation = /locations|additional location|second location|multiple locations|our offices/i.test(text)
+  const signals = {
+    email_count: emails.length,
+    education_found: Boolean(educationMatch),
+    graduation_year_found: Boolean(graduationMatch),
+    multi_location_found: multiLocation,
+  }
+
+  return {
+    email: domainEmail || emails[0] || null,
+    educationSchool: educationMatch?.[0]?.trim() || null,
+    graduationYear: graduationMatch ? Number(graduationMatch[2]) : null,
+    multiLocation,
+    signals,
+  }
+}
+
+function calculateOwnerConfidence(text, dentist) {
+  const normalizedText = normalize(text)
+  const doctorName = normalize(`${dentist.first_name || ''} ${dentist.last_name || ''}`)
+  const ownerTerms = ['owner', 'founder', 'founded', 'principal dentist', 'practice owner', 'clinical director']
+  let score = 0
+
+  if (doctorName && normalizedText.includes(doctorName)) score += 30
+  for (const term of ownerTerms) {
+    if (normalizedText.includes(term)) score += 15
+  }
+  if (/dr\.?\s+[a-z]+/i.test(text)) score += 10
+
+  return Math.min(score, 100)
+}
+
+function extractInternalLinks(html, rootUrl) {
+  const links = []
+  const hrefPattern = /href=["']([^"']+)["']/gi
+  let match
+  while ((match = hrefPattern.exec(html))) {
+    try {
+      const url = new URL(match[1], rootUrl)
+      if (url.hostname.replace(/^www\./, '') === rootUrl.hostname.replace(/^www\./, '')) {
+        url.hash = ''
+        links.push(url.toString())
+      }
+    } catch {
+      // Ignore invalid href values.
+    }
+  }
+  return [...new Set(links)]
+}
+
+function normalizeWebsiteUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) throw new Error('Missing website URL.')
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+}
+
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function escapeOverpass(value) {
