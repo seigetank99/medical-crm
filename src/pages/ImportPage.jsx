@@ -300,20 +300,31 @@ function ImportPage() {
       })
 
       if (!result.error && Number.isFinite(Number(result.data?.next_start_page))) {
+        const lastRun = {
+          startPage: Number(result.data.start_page || npiFullPull.startPage),
+          endPage: Number(result.data.end_page ?? npiFullPull.startPage + npiFullPull.pagesPerRun - 1),
+          nextPage: Number(result.data.next_start_page),
+          fetched: Number(result.data.fetched || 0),
+          inserted: Number(result.data.inserted || 0),
+          updated: Number(result.data.updated || 0),
+          skipped: Number(result.data.skipped || 0),
+          hasMore: Boolean(result.data.has_more),
+          completedAt: new Date().toISOString(),
+        }
         saveNpiFullPull({
           ...npiFullPull,
-          startPage: Number(result.data.next_start_page),
-          lastRun: {
-            startPage: Number(result.data.start_page || npiFullPull.startPage),
-            endPage: Number(result.data.end_page ?? npiFullPull.startPage + npiFullPull.pagesPerRun - 1),
-            fetched: Number(result.data.fetched || 0),
-            inserted: Number(result.data.inserted || 0),
-            updated: Number(result.data.updated || 0),
-            skipped: Number(result.data.skipped || 0),
-            hasMore: Boolean(result.data.has_more),
-            completedAt: new Date().toISOString(),
-          },
+          startPage: lastRun.nextPage,
+          lastRun,
         })
+
+        return {
+          ...result,
+          data: {
+            ...result.data,
+            tracked_pages: `${lastRun.startPage}-${lastRun.endPage}`,
+            next_page: lastRun.nextPage,
+          },
+        }
       }
 
       return result
@@ -471,12 +482,12 @@ function ImportPage() {
         <article className="panel import-panel">
           <div className="panel-heading">
             <div>
-              <h2>Run NPI Import Now</h2>
-              <p>Imports dental providers from the official NPI Registry for NY, NJ, and CT.</p>
+              <h2>NPI Import</h2>
+              <p>Use the tracked pull to walk through the full NPI dataset without repeating the same pages.</p>
             </div>
           </div>
           <label className="field-group">
-            <span>Import depth</span>
+            <span>Quick import depth</span>
             <select value={npiMaxPages} onChange={(event) => setNpiMaxPages(Number(event.target.value))}>
               {npiImportDepthOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -487,19 +498,19 @@ function ImportPage() {
           </label>
           <button
             type="button"
-            className="primary-button"
+            className="ghost-button"
             onClick={() => handlePipelineAction('NPI import', () => runNpiImport({ maxPages: npiMaxPages, limit: 200 }))}
             disabled={Boolean(pipelineRunning)}
           >
             <Play size={16} />
-            {pipelineRunning === 'NPI import' ? 'Running...' : 'Run NPI Import Now'}
+            {pipelineRunning === 'NPI import' ? 'Running...' : 'Quick Pull From Page 0'}
           </button>
           <div className="npi-cursor-panel">
             <div>
-              <strong>Full dataset cursor</strong>
+              <strong>Full dataset page tracker</strong>
               <span>
-                Next pages {npiFullPull.startPage.toLocaleString()}-
-                {(npiFullPull.startPage + npiFullPull.pagesPerRun - 1).toLocaleString()}
+                Next tracked pull: pages {npiFullPull.startPage.toLocaleString()}-
+                {(npiFullPull.startPage + npiFullPull.pagesPerRun - 1).toLocaleString()}. Quick pull does not advance this tracker.
               </span>
             </div>
             <div className="npi-cursor-stats">
@@ -543,9 +554,9 @@ function ImportPage() {
               </select>
             </label>
             <div className="toolbar-group">
-              <button type="button" className="ghost-button" onClick={handleFullNpiImport} disabled={Boolean(pipelineRunning)}>
+              <button type="button" className="primary-button" onClick={handleFullNpiImport} disabled={Boolean(pipelineRunning)}>
                 <Play size={16} />
-                {pipelineRunning === 'Full NPI pull' ? 'Pulling...' : 'Pull Next Batch'}
+                {pipelineRunning === 'Full NPI pull' ? 'Pulling...' : 'Pull Tracked Batch'}
               </button>
               <button type="button" className="ghost-button" onClick={resetFullNpiPull} disabled={Boolean(pipelineRunning)}>
                 Reset
@@ -820,7 +831,12 @@ function formatDateTime(value) {
 
 function summarizePipelineResult(data) {
   if (!data || typeof data !== 'object') return 'done'
-  return Object.entries(data)
+  const priorityEntries = ['tracked_pages', 'next_page', 'start_page', 'end_page', 'fetched', 'inserted', 'updated', 'skipped', 'has_more']
+    .filter((key) => data[key] !== undefined)
+    .map((key) => [key, data[key]])
+  const remainingEntries = Object.entries(data).filter(([key]) => !priorityEntries.some(([priorityKey]) => priorityKey === key))
+
+  return [...priorityEntries, ...remainingEntries]
     .filter(([, value]) => typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')
     .slice(0, 8)
     .map(([key, value]) => `${key} ${value}`)
