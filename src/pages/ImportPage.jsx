@@ -311,9 +311,11 @@ function ImportPage() {
           hasMore: Boolean(result.data.has_more),
           completedAt: new Date().toISOString(),
         }
+        const shouldAdvance = lastRun.fetched > 0
+
         saveNpiFullPull({
           ...npiFullPull,
-          startPage: lastRun.nextPage,
+          startPage: shouldAdvance ? lastRun.nextPage : npiFullPull.startPage,
           lastRun,
         })
 
@@ -322,7 +324,9 @@ function ImportPage() {
           data: {
             ...result.data,
             tracked_pages: `${lastRun.startPage}-${lastRun.endPage}`,
-            next_page: lastRun.nextPage,
+            next_page: shouldAdvance ? lastRun.nextPage : npiFullPull.startPage,
+            cursor_advanced: shouldAdvance,
+            message: shouldAdvance ? 'Cursor advanced.' : 'No NPI rows found. Cursor did not advance; reset if you want to start over.',
           },
         }
       }
@@ -741,6 +745,7 @@ function ImportPage() {
                   <th>Successful</th>
                   <th>Failed</th>
                   <th>Duplicates</th>
+                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
@@ -753,6 +758,7 @@ function ImportPage() {
                     <td>{batch.successful_rows || 0}</td>
                     <td>{batch.failed_rows || 0}</td>
                     <td>{batch.duplicate_rows || 0}</td>
+                    <td>{batch.notes || '—'}</td>
                   </tr>
                 ))}
               </tbody>

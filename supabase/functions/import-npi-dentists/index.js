@@ -94,6 +94,11 @@ Deno.serve(async (req) => {
     })
     .eq('batch_id', batchId)
 
+  if (summary.fetched === 0) {
+    summary.next_start_page = startPage
+    summary.has_more = false
+  }
+
   return jsonResponse(summary)
 })
 
