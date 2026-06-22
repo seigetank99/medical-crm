@@ -22,10 +22,16 @@ Deno.serve(async (req) => {
   )
   const limit = Math.min(Math.max(Number(body.limit || 200), 1), 200)
   const maxPages = Math.min(Math.max(Number(body.maxPages || 1), 1), 10)
+  const startPage = Math.min(Math.max(Number(body.startPage || 0), 0), 100000)
+  const endPage = startPage + maxPages
   const batchId = `npi_${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`
 
   const summary = {
     batch_id: batchId,
+    start_page: startPage,
+    end_page: endPage - 1,
+    next_start_page: endPage,
+    has_more: false,
     fetched: 0,
     inserted: 0,
     updated: 0,
@@ -43,12 +49,12 @@ Deno.serve(async (req) => {
     successful_rows: 0,
     failed_rows: 0,
     duplicate_rows: 0,
-    notes: `NPI import started for ${states.join(', ')}.`,
+    notes: `NPI import started for ${states.join(', ')} pages ${startPage}-${endPage - 1}.`,
   })
   if (batchError) return errorResponse(batchError.message, 500)
 
   for (const state of states) {
-    for (let page = 0; page < maxPages; page += 1) {
+    for (let page = startPage; page < endPage; page += 1) {
       const skip = page * limit
       const url = new URL(npiEndpoint)
       url.searchParams.set('version', '2.1')
@@ -68,6 +74,7 @@ Deno.serve(async (req) => {
           await importProvider(supabase, provider, specialties, batchId, summary)
         }
 
+        if (providers.length === limit) summary.has_more = true
         if (providers.length < limit) break
       } catch (error) {
         summary.failed += 1
@@ -83,7 +90,7 @@ Deno.serve(async (req) => {
       successful_rows: summary.inserted + summary.updated,
       failed_rows: summary.failed,
       duplicate_rows: summary.skipped,
-      notes: `NPI import completed. Inserted ${summary.inserted}, updated ${summary.updated}, skipped ${summary.skipped}.`,
+      notes: `NPI import completed for pages ${startPage}-${endPage - 1}. Inserted ${summary.inserted}, updated ${summary.updated}, skipped ${summary.skipped}.`,
     })
     .eq('batch_id', batchId)
 

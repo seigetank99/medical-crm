@@ -798,6 +798,26 @@
   align-content: start;
 }
 
+.npi-cursor-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.npi-cursor-panel > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.npi-cursor-panel span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .api-connections-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);

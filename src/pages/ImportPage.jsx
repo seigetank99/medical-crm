@@ -25,6 +25,7 @@ import {
 
 const importBatchSize = 500
 const apiConnectionsKey = 'omnihealth-api-connections'
+const npiFullPullKey = 'omnihealth-npi-full-pull'
 const defaultConnectionForm = {
   name: '',
   url: '',
@@ -58,6 +59,7 @@ function ImportPage() {
   const [includeGooglePlaces, setIncludeGooglePlaces] = useState(false)
   const [includeWebsiteEnrichment, setIncludeWebsiteEnrichment] = useState(true)
   const [npiMaxPages, setNpiMaxPages] = useState(5)
+  const [npiFullPull, setNpiFullPull] = useState(() => loadNpiFullPull())
   const [npiTestLoading, setNpiTestLoading] = useState(false)
   const [npiTestResult, setNpiTestResult] = useState(null)
   const [connectionForm, setConnectionForm] = useState(defaultConnectionForm)
@@ -197,6 +199,7 @@ function ImportPage() {
     }
     await loadImportData()
     setPipelineRunning('')
+    return result
   }
 
   const handleNpiTest = async () => {
@@ -207,7 +210,7 @@ function ImportPage() {
       const url = new URL('https://npiregistry.cms.hhs.gov/api/')
       url.searchParams.set('version', '2.1')
       url.searchParams.set('state', 'NY')
-      url.searchParams.set('taxonomy_description', 'General Practice')
+      url.searchParams.set('taxonomy_description', 'Dentist')
       url.searchParams.set('limit', '3')
       url.searchParams.set('skip', '0')
 
@@ -281,6 +284,35 @@ function ImportPage() {
     const nextConnections = apiConnections.filter((connection) => connection.name !== name)
     setApiConnections(nextConnections)
     localStorage.setItem(apiConnectionsKey, JSON.stringify(nextConnections))
+  }
+
+  const saveNpiFullPull = (nextPull) => {
+    setNpiFullPull(nextPull)
+    localStorage.setItem(npiFullPullKey, JSON.stringify(nextPull))
+  }
+
+  const handleFullNpiImport = () =>
+    handlePipelineAction('Full NPI pull', async () => {
+      const result = await runNpiImport({
+        startPage: npiFullPull.startPage,
+        maxPages: npiFullPull.pagesPerRun,
+        limit: 200,
+      })
+
+      if (!result.error && Number.isFinite(Number(result.data?.next_start_page))) {
+        saveNpiFullPull({
+          ...npiFullPull,
+          startPage: Number(result.data.next_start_page),
+        })
+      }
+
+      return result
+    })
+
+  const resetFullNpiPull = () => {
+    saveNpiFullPull({ ...npiFullPull, startPage: 0 })
+    setPipelineMessage('Full NPI pull cursor reset to page 0.')
+    setPipelineMessageError(false)
   }
 
   if (!isSupabaseConfigured) {
@@ -452,6 +484,37 @@ function ImportPage() {
             <Play size={16} />
             {pipelineRunning === 'NPI import' ? 'Running...' : 'Run NPI Import Now'}
           </button>
+          <div className="npi-cursor-panel">
+            <div>
+              <strong>Full dataset cursor</strong>
+              <span>
+                Next pages {npiFullPull.startPage.toLocaleString()}-
+                {(npiFullPull.startPage + npiFullPull.pagesPerRun - 1).toLocaleString()}
+              </span>
+            </div>
+            <label className="field-group">
+              <span>Pages per run</span>
+              <select
+                value={npiFullPull.pagesPerRun}
+                onChange={(event) => saveNpiFullPull({ ...npiFullPull, pagesPerRun: Number(event.target.value) })}
+              >
+                {[1, 3, 5, 10].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="toolbar-group">
+              <button type="button" className="ghost-button" onClick={handleFullNpiImport} disabled={Boolean(pipelineRunning)}>
+                <Play size={16} />
+                {pipelineRunning === 'Full NPI pull' ? 'Pulling...' : 'Pull Next Batch'}
+              </button>
+              <button type="button" className="ghost-button" onClick={resetFullNpiPull} disabled={Boolean(pipelineRunning)}>
+                Reset
+              </button>
+            </div>
+          </div>
         </article>
 
         <article className="panel import-panel">
@@ -721,8 +784,8 @@ function formatDateTime(value) {
 function summarizePipelineResult(data) {
   if (!data || typeof data !== 'object') return 'done'
   return Object.entries(data)
-    .filter(([, value]) => typeof value === 'number' || typeof value === 'string')
-    .slice(0, 6)
+    .filter(([, value]) => typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')
+    .slice(0, 8)
     .map(([key, value]) => `${key} ${value}`)
     .join(', ')
 }
@@ -732,6 +795,18 @@ function loadApiConnections() {
     return JSON.parse(localStorage.getItem(apiConnectionsKey) || '[]')
   } catch {
     return []
+  }
+}
+
+function loadNpiFullPull() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(npiFullPullKey) || '{}')
+    return {
+      startPage: Math.max(Number(stored.startPage || 0), 0),
+      pagesPerRun: Math.min(Math.max(Number(stored.pagesPerRun || 5), 1), 10),
+    }
+  } catch {
+    return { startPage: 0, pagesPerRun: 5 }
   }
 }
 
