@@ -6,32 +6,24 @@ import { supabaseConfigError } from '../services/supabaseClient.js'
 import { formatDate, formatDoctorName } from '../utils/formatters.js'
 
 const statConfig = [
-  { key: 'totalLeads', label: 'Total Leads', accent: '#0f766e', helper: 'All visible CRM records' },
-  { key: 'ownerLeads', label: 'Owners / Partners', accent: '#2563eb', helper: 'Likely decision makers' },
-  { key: 'highScoreLeads', label: 'High Score Leads', accent: '#0f766e', helper: 'Lead score 25+' },
-  { key: 'overdueFollowUps', label: 'Overdue Follow Ups', accent: '#dc2626', helper: 'Past due touches' },
+  { key: 'totalLeads', label: 'Total Leads', accent: '#0f766e', helper: 'All CRM records' },
+  { key: 'highScoreLeads', label: 'High Score Leads', accent: '#2563eb', helper: 'Lead score 25+' },
+  { key: 'overdueFollowUps', label: 'Overdue Follow-Ups', accent: '#dc2626', helper: 'Needs attention' },
   { key: 'openTasks', label: 'Open Tasks', accent: '#9333ea', helper: 'Not completed' },
-  { key: 'clients', label: 'Clients', accent: '#2563eb', helper: 'Closed relationships' },
 ]
 
 const pipelineConfig = [
   ['New', 'newLeads', '#64748b'],
-  ['Attempted', 'attemptedLeads', '#0891b2'],
   ['Contacted', 'contactedLeads', '#2563eb'],
   ['Active Prospect', 'activeProspects', '#ca8a04'],
   ['Proposal Sent', 'proposalSent', '#9333ea'],
   ['Client', 'clients', '#0f766e'],
-  ['Nurture', 'nurtureLeads', '#7c3aed'],
-  ['Unqualified', 'unqualifiedLeads', '#ea580c'],
-  ['Lost', 'lostLeads', '#dc2626'],
 ]
 
 const qualityConfig = [
   ['Missing email', 'missingEmail'],
   ['Missing phone', 'missingPhone'],
-  ['Missing website', 'missingWebsite'],
   ['No follow-up date', 'missingFollowUp'],
-  ['No last contact', 'noLastContact'],
 ]
 
 function DashboardPage() {
@@ -66,12 +58,27 @@ function DashboardPage() {
         ))}
       </section>
 
-      <section className="dashboard-insight-grid">
+      <section className="dashboard-critical-grid">
+        <article className="panel dashboard-insight-panel priority-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Priority Work</h2>
+              <p>What needs attention first</p>
+            </div>
+          </div>
+          <div className="dashboard-focus-grid">
+            <FocusMetric label="Overdue Follow-Ups" value={metrics.overdueFollowUps || 0} tone="danger" />
+            <FocusMetric label="Due Today" value={metrics.followUpsDueToday || 0} />
+            <FocusMetric label="Due This Week" value={metrics.followUpsThisWeek || 0} />
+            <FocusMetric label="Overdue Tasks" value={metrics.overdueTasks || 0} tone="danger" />
+          </div>
+        </article>
+
         <article className="panel dashboard-insight-panel">
           <div className="panel-heading">
             <div>
-              <h2>Pipeline Mix</h2>
-              <p>{pipelineTotal.toLocaleString()} leads with status</p>
+              <h2>Pipeline Snapshot</h2>
+              <p>{pipelineTotal.toLocaleString()} active pipeline records</p>
             </div>
           </div>
           <div className="pipeline-bars">
@@ -84,21 +91,6 @@ function DashboardPage() {
                 accent={accent}
               />
             ))}
-          </div>
-        </article>
-
-        <article className="panel dashboard-insight-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Follow-Up Load</h2>
-              <p>Work due now and this week</p>
-            </div>
-          </div>
-          <div className="dashboard-focus-grid">
-            <FocusMetric label="Overdue" value={metrics.overdueFollowUps || 0} tone="danger" />
-            <FocusMetric label="Due Today" value={metrics.followUpsDueToday || 0} />
-            <FocusMetric label="Due This Week" value={metrics.followUpsThisWeek || 0} />
-            <FocusMetric label="Overdue Tasks" value={metrics.overdueTasks || 0} tone="danger" />
           </div>
         </article>
 
@@ -123,7 +115,7 @@ function DashboardPage() {
         </article>
       </section>
 
-      <section className="dashboard-tables compact">
+      <section className="dashboard-bottom-grid">
         <DashboardList
           title="Highest Score Leads"
           rows={metrics.topLeads || []}
@@ -136,17 +128,6 @@ function DashboardPage() {
           )}
         />
         <DashboardList
-          title="Upcoming Follow-Ups"
-          rows={metrics.upcomingFollowUps || []}
-          renderRow={(row) => (
-            <>
-              <strong>{formatDoctorName(row)}</strong>
-              <span>{row.contact_status || '—'}</span>
-              <b>{formatDate(row.next_follow_up_date)}</b>
-            </>
-          )}
-        />
-        <DashboardList
           title="Overdue Follow-Ups"
           rows={metrics.overdueFollowUpRows || []}
           renderRow={(row) => (
@@ -154,17 +135,6 @@ function DashboardPage() {
               <strong>{formatDoctorName(row)}</strong>
               <span>{row.follow_up_priority || '—'}</span>
               <b>{formatDate(row.next_follow_up_date)}</b>
-            </>
-          )}
-        />
-        <DashboardList
-          title="Upcoming Tasks"
-          rows={metrics.upcomingTaskRows || []}
-          renderRow={(row) => (
-            <>
-              <strong>{row.title}</strong>
-              <span>{row.priority} · {row.status}</span>
-              <b>{formatDate(row.due_date)}</b>
             </>
           )}
         />

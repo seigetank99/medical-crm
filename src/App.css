@@ -530,7 +530,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -578,10 +578,26 @@
   gap: 20px;
 }
 
+.dashboard-critical-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.9fr) minmax(320px, 0.9fr);
+  gap: 20px;
+}
+
+.dashboard-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
 .dashboard-insight-panel {
   padding: 20px;
   display: grid;
   gap: 16px;
+}
+
+.priority-panel {
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--border));
 }
 
 .pipeline-bars,
@@ -1220,11 +1236,13 @@
 
 @media (max-width: 1400px) {
   .stats-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard-insight-grid,
   .dashboard-tables.compact,
+  .dashboard-critical-grid,
+  .dashboard-bottom-grid,
   .pipeline-actions-grid,
   .api-connections-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1254,6 +1272,8 @@
   .dashboard-lower,
   .dashboard-tables,
   .dashboard-insight-grid,
+  .dashboard-critical-grid,
+  .dashboard-bottom-grid,
   .dashboard-tables.compact {
     grid-template-columns: 1fr;
   }
