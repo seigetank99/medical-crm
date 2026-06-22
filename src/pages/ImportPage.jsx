@@ -303,6 +303,16 @@ function ImportPage() {
         saveNpiFullPull({
           ...npiFullPull,
           startPage: Number(result.data.next_start_page),
+          lastRun: {
+            startPage: Number(result.data.start_page || npiFullPull.startPage),
+            endPage: Number(result.data.end_page ?? npiFullPull.startPage + npiFullPull.pagesPerRun - 1),
+            fetched: Number(result.data.fetched || 0),
+            inserted: Number(result.data.inserted || 0),
+            updated: Number(result.data.updated || 0),
+            skipped: Number(result.data.skipped || 0),
+            hasMore: Boolean(result.data.has_more),
+            completedAt: new Date().toISOString(),
+          },
         })
       }
 
@@ -310,7 +320,7 @@ function ImportPage() {
     })
 
   const resetFullNpiPull = () => {
-    saveNpiFullPull({ ...npiFullPull, startPage: 0 })
+    saveNpiFullPull({ ...npiFullPull, startPage: 0, lastRun: null })
     setPipelineMessage('Full NPI pull cursor reset to page 0.')
     setPipelineMessageError(false)
   }
@@ -492,6 +502,33 @@ function ImportPage() {
                 {(npiFullPull.startPage + npiFullPull.pagesPerRun - 1).toLocaleString()}
               </span>
             </div>
+            <div className="npi-cursor-stats">
+              <PipelineMetric label="Next page" value={npiFullPull.startPage} />
+              <PipelineMetric label="Pages/run" value={npiFullPull.pagesPerRun} />
+              <PipelineMetric
+                label="Last pages"
+                value={
+                  npiFullPull.lastRun
+                    ? `${npiFullPull.lastRun.startPage.toLocaleString()}-${npiFullPull.lastRun.endPage.toLocaleString()}`
+                    : '—'
+                }
+              />
+              <PipelineMetric
+                label="Last rows"
+                value={
+                  npiFullPull.lastRun
+                    ? `${npiFullPull.lastRun.inserted.toLocaleString()} new / ${npiFullPull.lastRun.updated.toLocaleString()} updated`
+                    : '—'
+                }
+              />
+            </div>
+            {npiFullPull.lastRun ? (
+              <div className="npi-cursor-detail">
+                Last pull finished {formatDateTime(npiFullPull.lastRun.completedAt)}. Fetched{' '}
+                {npiFullPull.lastRun.fetched.toLocaleString()}, skipped {npiFullPull.lastRun.skipped.toLocaleString()}, more pages:{' '}
+                {npiFullPull.lastRun.hasMore ? 'yes' : 'no'}.
+              </div>
+            ) : null}
             <label className="field-group">
               <span>Pages per run</span>
               <select
@@ -804,9 +841,10 @@ function loadNpiFullPull() {
     return {
       startPage: Math.max(Number(stored.startPage || 0), 0),
       pagesPerRun: Math.min(Math.max(Number(stored.pagesPerRun || 5), 1), 10),
+      lastRun: stored.lastRun || null,
     }
   } catch {
-    return { startPage: 0, pagesPerRun: 5 }
+    return { startPage: 0, pagesPerRun: 5, lastRun: null }
   }
 }
 
