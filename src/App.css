@@ -818,6 +818,20 @@
   font-size: 0.9rem;
 }
 
+.npi-state-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.npi-state-selector .checkbox-field {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  margin: 0;
+  padding: 8px 10px;
+}
+
 .npi-cursor-stats {
   display: grid;
   gap: 10px;
