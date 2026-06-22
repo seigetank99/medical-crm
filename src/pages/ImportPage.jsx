@@ -40,6 +40,7 @@ const npiImportDepthOptions = [
   { value: 5, label: 'Deep', detail: 'Recommended' },
   { value: 10, label: 'Maximum', detail: 'Largest pull' },
 ]
+const npiTrackedStates = ['NY', 'NJ', 'CT']
 
 function ImportPage() {
   const [fileName, setFileName] = useState('')
@@ -293,29 +294,42 @@ function ImportPage() {
 
   const handleFullNpiImport = () =>
     handlePipelineAction('Full NPI pull', async () => {
+      const currentState = npiTrackedStates[npiFullPull.stateIndex] || npiTrackedStates[0]
       const result = await runNpiImport({
+        states: [currentState],
         startPage: npiFullPull.startPage,
-        maxPages: npiFullPull.pagesPerRun,
+        maxPages: 1,
         limit: 200,
       })
 
       if (!result.error && Number.isFinite(Number(result.data?.next_start_page))) {
+        const fetched = Number(result.data.fetched || 0)
+        const hasMoreInState = Boolean(result.data.has_more)
+        const stateComplete = (fetched > 0 && !hasMoreInState) || (fetched === 0 && npiFullPull.startPage > 0)
+        const nextStateIndex = stateComplete ? npiFullPull.stateIndex + 1 : npiFullPull.stateIndex
+        const nextStartPage = fetched > 0 && hasMoreInState ? Number(result.data.next_start_page) : 0
+        const wrappedStateIndex = nextStateIndex >= npiTrackedStates.length ? 0 : nextStateIndex
+        const completedAllStates = nextStateIndex >= npiTrackedStates.length
         const lastRun = {
+          state: currentState,
           startPage: Number(result.data.start_page || npiFullPull.startPage),
-          endPage: Number(result.data.end_page ?? npiFullPull.startPage + npiFullPull.pagesPerRun - 1),
-          nextPage: Number(result.data.next_start_page),
-          fetched: Number(result.data.fetched || 0),
+          endPage: Number(result.data.end_page ?? npiFullPull.startPage),
+          nextPage: nextStartPage,
+          nextState: completedAllStates ? npiTrackedStates[0] : npiTrackedStates[wrappedStateIndex],
+          fetched,
           inserted: Number(result.data.inserted || 0),
           updated: Number(result.data.updated || 0),
           skipped: Number(result.data.skipped || 0),
-          hasMore: Boolean(result.data.has_more),
+          hasMore: hasMoreInState,
+          completedAllStates,
           completedAt: new Date().toISOString(),
         }
-        const shouldAdvance = lastRun.fetched > 0
+        const shouldAdvance = fetched > 0 || stateComplete
 
         saveNpiFullPull({
           ...npiFullPull,
-          startPage: shouldAdvance ? lastRun.nextPage : npiFullPull.startPage,
+          stateIndex: shouldAdvance ? wrappedStateIndex : npiFullPull.stateIndex,
+          startPage: shouldAdvance ? nextStartPage : npiFullPull.startPage,
           lastRun,
         })
 
@@ -323,10 +337,16 @@ function ImportPage() {
           ...result,
           data: {
             ...result.data,
-            tracked_pages: `${lastRun.startPage}-${lastRun.endPage}`,
-            next_page: shouldAdvance ? lastRun.nextPage : npiFullPull.startPage,
+            tracked_position: `${currentState} page ${lastRun.startPage}`,
+            next_position: shouldAdvance ? `${lastRun.nextState} page ${lastRun.nextPage}` : `${currentState} page ${npiFullPull.startPage}`,
             cursor_advanced: shouldAdvance,
-            message: shouldAdvance ? 'Cursor advanced.' : 'No NPI rows found. Cursor did not advance; reset if you want to start over.',
+            message: shouldAdvance
+              ? completedAllStates
+                ? 'Completed CT and wrapped back to NY page 0.'
+                : stateComplete && fetched === 0
+                  ? `No rows found at ${currentState} page ${npiFullPull.startPage}; moved to next state.`
+                : 'Cursor advanced.'
+              : 'No NPI rows found. Cursor did not advance; reset if you want to start over.',
           },
         }
       }
@@ -335,8 +355,8 @@ function ImportPage() {
     })
 
   const resetFullNpiPull = () => {
-    saveNpiFullPull({ ...npiFullPull, startPage: 0, lastRun: null })
-    setPipelineMessage('Full NPI pull cursor reset to page 0.')
+    saveNpiFullPull({ ...npiFullPull, stateIndex: 0, startPage: 0, lastRun: null })
+    setPipelineMessage('Full NPI pull cursor reset to NY page 0.')
     setPipelineMessageError(false)
   }
 
@@ -513,18 +533,18 @@ function ImportPage() {
             <div>
               <strong>Full dataset page tracker</strong>
               <span>
-                Next tracked pull: pages {npiFullPull.startPage.toLocaleString()}-
-                {(npiFullPull.startPage + npiFullPull.pagesPerRun - 1).toLocaleString()}. Quick pull does not advance this tracker.
+                Next tracked pull: {npiTrackedStates[npiFullPull.stateIndex] || npiTrackedStates[0]} page{' '}
+                {npiFullPull.startPage.toLocaleString()}. Quick pull does not advance this tracker.
               </span>
             </div>
             <div className="npi-cursor-stats">
+              <PipelineMetric label="Next state" value={npiTrackedStates[npiFullPull.stateIndex] || npiTrackedStates[0]} />
               <PipelineMetric label="Next page" value={npiFullPull.startPage} />
-              <PipelineMetric label="Pages/run" value={npiFullPull.pagesPerRun} />
               <PipelineMetric
-                label="Last pages"
+                label="Last pull"
                 value={
                   npiFullPull.lastRun
-                    ? `${npiFullPull.lastRun.startPage.toLocaleString()}-${npiFullPull.lastRun.endPage.toLocaleString()}`
+                    ? `${npiFullPull.lastRun.state || '—'} page ${npiFullPull.lastRun.startPage.toLocaleString()}`
                     : '—'
                 }
               />
@@ -540,27 +560,17 @@ function ImportPage() {
             {npiFullPull.lastRun ? (
               <div className="npi-cursor-detail">
                 Last pull finished {formatDateTime(npiFullPull.lastRun.completedAt)}. Fetched{' '}
-                {npiFullPull.lastRun.fetched.toLocaleString()}, skipped {npiFullPull.lastRun.skipped.toLocaleString()}, more pages:{' '}
+                {npiFullPull.lastRun.fetched.toLocaleString()}, skipped {npiFullPull.lastRun.skipped.toLocaleString()}, more pages in{' '}
+                {npiFullPull.lastRun.state || 'this state'}:{' '}
                 {npiFullPull.lastRun.hasMore ? 'yes' : 'no'}.
               </div>
             ) : null}
-            <label className="field-group">
-              <span>Pages per run</span>
-              <select
-                value={npiFullPull.pagesPerRun}
-                onChange={(event) => saveNpiFullPull({ ...npiFullPull, pagesPerRun: Number(event.target.value) })}
-              >
-                {[1, 3, 5, 10].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
             <div className="toolbar-group">
               <button type="button" className="primary-button" onClick={handleFullNpiImport} disabled={Boolean(pipelineRunning)}>
                 <Play size={16} />
-                {pipelineRunning === 'Full NPI pull' ? 'Pulling...' : 'Pull Tracked Batch'}
+                {pipelineRunning === 'Full NPI pull'
+                  ? 'Pulling...'
+                  : `Pull ${npiTrackedStates[npiFullPull.stateIndex] || npiTrackedStates[0]} Page ${npiFullPull.startPage}`}
               </button>
               <button type="button" className="ghost-button" onClick={resetFullNpiPull} disabled={Boolean(pipelineRunning)}>
                 Reset
@@ -837,7 +847,17 @@ function formatDateTime(value) {
 
 function summarizePipelineResult(data) {
   if (!data || typeof data !== 'object') return 'done'
-  const priorityEntries = ['tracked_pages', 'next_page', 'start_page', 'end_page', 'fetched', 'inserted', 'updated', 'skipped', 'has_more']
+  const priorityEntries = [
+    'tracked_position',
+    'next_position',
+    'cursor_advanced',
+    'fetched',
+    'inserted',
+    'updated',
+    'skipped',
+    'has_more',
+    'message',
+  ]
     .filter((key) => data[key] !== undefined)
     .map((key) => [key, data[key]])
   const remainingEntries = Object.entries(data).filter(([key]) => !priorityEntries.some(([priorityKey]) => priorityKey === key))
@@ -860,13 +880,14 @@ function loadApiConnections() {
 function loadNpiFullPull() {
   try {
     const stored = JSON.parse(localStorage.getItem(npiFullPullKey) || '{}')
+    const stateIndex = Math.min(Math.max(Number(stored.stateIndex || 0), 0), npiTrackedStates.length - 1)
     return {
+      stateIndex,
       startPage: Math.max(Number(stored.startPage || 0), 0),
-      pagesPerRun: Math.min(Math.max(Number(stored.pagesPerRun || 5), 1), 10),
       lastRun: stored.lastRun || null,
     }
   } catch {
-    return { startPage: 0, pagesPerRun: 5, lastRun: null }
+    return { stateIndex: 0, startPage: 0, lastRun: null }
   }
 }
 
