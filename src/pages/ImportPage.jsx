@@ -1,4 +1,4 @@
-import { CheckCircle2, FileUp, Play, RefreshCw, RotateCcw, Sparkles, Upload, XCircle } from 'lucide-react'
+import { CheckCircle2, FileUp, Globe2, Play, RefreshCw, RotateCcw, Sparkles, Upload, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import EmptyState from '../components/common/EmptyState.jsx'
 import LoadingState from '../components/common/LoadingState.jsx'
@@ -24,6 +24,14 @@ import {
 } from '../utils/importCsv.js'
 
 const importBatchSize = 500
+const apiConnectionsKey = 'omnihealth-api-connections'
+const defaultConnectionForm = {
+  name: '',
+  url: '',
+  authMode: 'none',
+  serverSecretName: '',
+  notes: '',
+}
 
 function ImportPage() {
   const [fileName, setFileName] = useState('')
@@ -42,6 +50,11 @@ function ImportPage() {
   const [selectedDentistId, setSelectedDentistId] = useState('')
   const [includeGooglePlaces, setIncludeGooglePlaces] = useState(false)
   const [includeWebsiteEnrichment, setIncludeWebsiteEnrichment] = useState(true)
+  const [npiTestLoading, setNpiTestLoading] = useState(false)
+  const [npiTestResult, setNpiTestResult] = useState(null)
+  const [connectionForm, setConnectionForm] = useState(defaultConnectionForm)
+  const [apiConnections, setApiConnections] = useState(() => loadApiConnections())
+  const [connectionTestMessage, setConnectionTestMessage] = useState('')
 
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows])
   const invalidRows = rows.length - validRows.length
@@ -178,6 +191,90 @@ function ImportPage() {
     setPipelineRunning('')
   }
 
+  const handleNpiTest = async () => {
+    setNpiTestLoading(true)
+    setNpiTestResult(null)
+
+    try {
+      const url = new URL('https://npiregistry.cms.hhs.gov/api/')
+      url.searchParams.set('version', '2.1')
+      url.searchParams.set('state', 'NY')
+      url.searchParams.set('taxonomy_description', 'General Practice')
+      url.searchParams.set('limit', '3')
+      url.searchParams.set('skip', '0')
+
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`NPI Registry returned ${response.status}.`)
+      const payload = await response.json()
+      const first = payload.results?.[0]
+      setNpiTestResult({
+        count: payload.result_count || payload.results?.length || 0,
+        sample: first
+          ? {
+              npi: first.number,
+              name: first.basic?.organization_name || [first.basic?.first_name, first.basic?.last_name].filter(Boolean).join(' '),
+              taxonomy: first.taxonomies?.[0]?.desc,
+              city: first.addresses?.find((address) => address.address_purpose === 'LOCATION')?.city,
+              state: first.addresses?.find((address) => address.address_purpose === 'LOCATION')?.state,
+            }
+          : null,
+      })
+    } catch (error) {
+      setNpiTestResult({ error: error.message || 'Unable to reach NPI Registry.' })
+    } finally {
+      setNpiTestLoading(false)
+    }
+  }
+
+  const handleSaveConnection = () => {
+    setConnectionTestMessage('')
+    const name = connectionForm.name.trim()
+    const url = connectionForm.url.trim()
+    if (!name || !url) {
+      setConnectionTestMessage('Connection name and URL are required.')
+      return
+    }
+
+    try {
+      const parsed = new URL(url)
+      if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Use an HTTP or HTTPS URL.')
+    } catch (error) {
+      setConnectionTestMessage(error.message || 'Enter a valid URL.')
+      return
+    }
+
+    const nextConnections = [
+      ...apiConnections.filter((connection) => connection.name !== name),
+      { ...connectionForm, name, url, updated_at: new Date().toISOString() },
+    ]
+    setApiConnections(nextConnections)
+    localStorage.setItem(apiConnectionsKey, JSON.stringify(nextConnections))
+    setConnectionForm(defaultConnectionForm)
+    setConnectionTestMessage('Connection saved. Store real API keys as Supabase Function secrets, not in the frontend.')
+  }
+
+  const handleTestConnection = async (connection) => {
+    setConnectionTestMessage('')
+
+    if (connection.authMode !== 'none') {
+      setConnectionTestMessage(`"${connection.name}" needs server-side auth. Add its key as a Supabase secret, then create an Edge Function adapter.`)
+      return
+    }
+
+    try {
+      const response = await fetch(connection.url, { method: 'GET' })
+      setConnectionTestMessage(`${connection.name}: ${response.status} ${response.statusText || 'OK'}`)
+    } catch (error) {
+      setConnectionTestMessage(`${connection.name}: ${error.message || 'Request failed. The API may block browser CORS.'}`)
+    }
+  }
+
+  const handleRemoveConnection = (name) => {
+    const nextConnections = apiConnections.filter((connection) => connection.name !== name)
+    setApiConnections(nextConnections)
+    localStorage.setItem(apiConnectionsKey, JSON.stringify(nextConnections))
+  }
+
   if (!isSupabaseConfigured) {
     return (
       <EmptyState
@@ -215,6 +312,109 @@ function ImportPage() {
         )}
 
         {pipelineMessage ? <div className={`notice ${pipelineMessageError ? 'error' : ''}`}>{pipelineMessage}</div> : null}
+      </section>
+
+      <section className="panel import-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>API Connections</h2>
+            <p>Test public endpoints and track server-side integrations without storing secrets in the browser.</p>
+          </div>
+        </div>
+
+        <div className="api-connections-grid">
+          <article className="api-connection-card">
+            <div>
+              <h3>NPI Registry</h3>
+              <p>Public official API. Use this test to confirm the browser can reach NPI; use Run NPI Import Now to write records through Supabase.</p>
+            </div>
+            <button type="button" className="ghost-button" onClick={handleNpiTest} disabled={npiTestLoading}>
+              <Globe2 size={16} />
+              {npiTestLoading ? 'Testing...' : 'Test NPI API'}
+            </button>
+            {npiTestResult ? (
+              <pre className={`api-test-result ${npiTestResult.error ? 'error' : ''}`}>{JSON.stringify(npiTestResult, null, 2)}</pre>
+            ) : null}
+          </article>
+
+          <article className="api-connection-card">
+            <div>
+              <h3>Add API Connection</h3>
+              <p>Save endpoint metadata here. Private API keys must be configured as Supabase secrets and called from Edge Functions.</p>
+            </div>
+            <div className="api-connection-form">
+              <label className="field-group">
+                <span>Name</span>
+                <input
+                  value={connectionForm.name}
+                  onChange={(event) => setConnectionForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Example: State license API"
+                />
+              </label>
+              <label className="field-group">
+                <span>Base URL</span>
+                <input
+                  value={connectionForm.url}
+                  onChange={(event) => setConnectionForm((current) => ({ ...current, url: event.target.value }))}
+                  placeholder="https://api.example.gov/search"
+                />
+              </label>
+              <label className="field-group">
+                <span>Auth</span>
+                <select
+                  value={connectionForm.authMode}
+                  onChange={(event) => setConnectionForm((current) => ({ ...current, authMode: event.target.value }))}
+                >
+                  <option value="none">No auth / public</option>
+                  <option value="server-secret">Server-side secret required</option>
+                </select>
+              </label>
+              <label className="field-group">
+                <span>Supabase secret name</span>
+                <input
+                  value={connectionForm.serverSecretName}
+                  onChange={(event) => setConnectionForm((current) => ({ ...current, serverSecretName: event.target.value }))}
+                  placeholder="Example: STATE_LICENSE_API_KEY"
+                />
+              </label>
+              <label className="field-group api-notes-field">
+                <span>Notes</span>
+                <textarea
+                  value={connectionForm.notes}
+                  onChange={(event) => setConnectionForm((current) => ({ ...current, notes: event.target.value }))}
+                  placeholder="What fields this API can enrich"
+                />
+              </label>
+            </div>
+            <button type="button" className="primary-button" onClick={handleSaveConnection}>
+              Save Connection
+            </button>
+          </article>
+        </div>
+
+        {connectionTestMessage ? <div className="notice">{connectionTestMessage}</div> : null}
+
+        {apiConnections.length ? (
+          <div className="api-connection-list">
+            {apiConnections.map((connection) => (
+              <div key={connection.name} className="api-connection-row">
+                <div>
+                  <strong>{connection.name}</strong>
+                  <span>{connection.url}</span>
+                  {connection.serverSecretName ? <small>Secret: {connection.serverSecretName}</small> : null}
+                </div>
+                <div className="toolbar-group">
+                  <button type="button" className="ghost-button" onClick={() => handleTestConnection(connection)}>
+                    Test
+                  </button>
+                  <button type="button" className="ghost-button danger" onClick={() => handleRemoveConnection(connection.name)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="pipeline-actions-grid">
@@ -507,6 +707,14 @@ function summarizePipelineResult(data) {
     .slice(0, 6)
     .map(([key, value]) => `${key} ${value}`)
     .join(', ')
+}
+
+function loadApiConnections() {
+  try {
+    return JSON.parse(localStorage.getItem(apiConnectionsKey) || '[]')
+  } catch {
+    return []
+  }
 }
 
 export default ImportPage

@@ -782,6 +782,89 @@
   align-content: start;
 }
 
+.api-connections-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+}
+
+.api-connection-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.api-connection-card h3,
+.api-connection-card p {
+  margin: 0;
+}
+
+.api-connection-card p,
+.api-connection-row span,
+.api-connection-row small {
+  color: var(--text-muted);
+}
+
+.api-connection-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.api-notes-field {
+  grid-column: 1 / -1;
+}
+
+.api-test-result {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.api-test-result.error {
+  color: var(--danger);
+}
+
+.api-connection-list {
+  display: grid;
+  gap: 10px;
+}
+
+.api-connection-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.api-connection-row div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.api-connection-row span,
+.api-connection-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .import-table .invalid-row {
   background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
@@ -1142,7 +1225,8 @@
 
   .dashboard-insight-grid,
   .dashboard-tables.compact,
-  .pipeline-actions-grid {
+  .pipeline-actions-grid,
+  .api-connections-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1231,6 +1315,9 @@
   .import-summary,
   .pipeline-status-grid,
   .pipeline-actions-grid,
+  .api-connections-grid,
+  .api-connection-form,
+  .api-connection-row,
   .database-toolbar,
   .database-table-tabs,
   .database-column-grid {
