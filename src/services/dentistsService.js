@@ -24,16 +24,27 @@ const baseColumns = `
   multi_location,
   google_rating,
   google_review_count,
+  lead_score,
   contact_status,
   lead_source,
   notes,
   next_follow_up_date,
+  last_contact_date,
+  follow_up_priority,
   tags,
   import_source,
   import_batch_id,
   created_at,
   updated_at
 `
+
+const todayIso = () => new Date().toISOString().slice(0, 10)
+
+function weekEndIso() {
+  const date = new Date()
+  date.setDate(date.getDate() + 7)
+  return date.toISOString().slice(0, 10)
+}
 
 function applyFilters(query, filters, search) {
   if (search) {
@@ -47,6 +58,8 @@ function applyFilters(query, filters, search) {
         `phone.ilike.%${term}%`,
         `city.ilike.%${term}%`,
         `state.ilike.%${term}%`,
+        `website.ilike.%${term}%`,
+        `npi_number.ilike.%${term}%`,
       ].join(','),
     )
   }
@@ -58,9 +71,27 @@ function applyFilters(query, filters, search) {
   if (filters.ageRange) query = query.eq('estimated_age_range', filters.ageRange)
   if (filters.graduationYearFrom) query = query.gte('graduation_year', Number(filters.graduationYearFrom))
   if (filters.graduationYearTo) query = query.lte('graduation_year', Number(filters.graduationYearTo))
-  if (filters.followUpFrom) query = query.gte('next_follow_up_date', filters.followUpFrom)
-  if (filters.followUpTo) query = query.lte('next_follow_up_date', filters.followUpTo)
+  if (filters.leadScoreMin) query = query.gte('lead_score', Number(filters.leadScoreMin))
+  if (filters.leadScoreMax) query = query.lte('lead_score', Number(filters.leadScoreMax))
+  if (filters.followUpPriority) query = query.eq('follow_up_priority', filters.followUpPriority)
+  if (filters.importSource) query = query.ilike('import_source', `%${filters.importSource.trim()}%`)
+  if (filters.importBatchId) query = query.eq('import_batch_id', filters.importBatchId.trim())
   if (filters.tags) query = query.ilike('tags', `%${filters.tags.trim()}%`)
+
+  if (filters.followUpPreset === 'today') {
+    query = query.eq('next_follow_up_date', todayIso())
+  } else if (filters.followUpPreset === 'overdue') {
+    query = query.lt('next_follow_up_date', todayIso())
+  } else if (filters.followUpPreset === 'this-week') {
+    query = query.gte('next_follow_up_date', todayIso()).lte('next_follow_up_date', weekEndIso())
+  } else {
+    if (filters.followUpFrom) query = query.gte('next_follow_up_date', filters.followUpFrom)
+    if (filters.followUpTo) query = query.lte('next_follow_up_date', filters.followUpTo)
+  }
+
+  if (filters.retirementCandidates) {
+    query = query.or('graduation_year.lt.1995,estimated_age_range.ilike.%60%,tags.ilike.%retirement_candidate%')
+  }
 
   return query
 }
@@ -78,8 +109,9 @@ export async function getDentists({ page, pageSize, search, filters, sort, expor
 
     if (!exportAll) {
       const from = (page - 1) * pageSize
-      const to = from + pageSize - 1
-      query = query.range(from, to)
+      query = query.range(from, from + pageSize - 1)
+    } else {
+      query = query.range(0, 999)
     }
 
     const { data, error, count } = await query
@@ -120,7 +152,7 @@ export async function updateDentistRecord(id, payload) {
   try {
     const { data, error } = await supabase
       .from('dentists')
-      .update({ ...payload, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', id)
       .select(baseColumns)
       .single()
@@ -133,11 +165,7 @@ export async function updateDentistRecord(id, payload) {
 
 export async function createDentistRecord(payload) {
   try {
-    const { data, error } = await supabase
-      .from('dentists')
-      .insert({ ...payload, updated_at: new Date().toISOString() })
-      .select(baseColumns)
-      .single()
+    const { data, error } = await supabase.from('dentists').insert(payload).select(baseColumns).single()
     if (error) throw error
     return { data, error: '' }
   } catch (error) {
@@ -147,43 +175,11 @@ export async function createDentistRecord(payload) {
 
 export async function createDentistRecordsBatch(records) {
   try {
-    const timestamp = new Date().toISOString()
-    const payload = records.map((record) => ({ ...record, updated_at: timestamp }))
-    const { data, error } = await supabase.from('dentists').insert(payload).select('id')
+    const { data, error } = await supabase.from('dentists').insert(records).select('id')
     if (error) throw error
     return { data: data || [], error: '' }
   } catch (error) {
     return { data: [], error: error.message || 'Failed to import dentists.' }
-  }
-}
-
-export async function findDuplicateDentists({ npiNumbers, emails }) {
-  try {
-    const duplicateNpis = new Set()
-    const duplicateEmails = new Set()
-
-    if (npiNumbers.length) {
-      const { data, error } = await supabase.from('dentists').select('npi_number').in('npi_number', npiNumbers)
-      if (error) throw error
-      data.forEach((row) => {
-        if (row.npi_number) duplicateNpis.add(String(row.npi_number).toLowerCase())
-      })
-    }
-
-    if (emails.length) {
-      const { data, error } = await supabase.from('dentists').select('email').in('email', emails)
-      if (error) throw error
-      data.forEach((row) => {
-        if (row.email) duplicateEmails.add(String(row.email).toLowerCase())
-      })
-    }
-
-    return { data: { duplicateNpis, duplicateEmails }, error: '' }
-  } catch (error) {
-    return {
-      data: { duplicateNpis: new Set(), duplicateEmails: new Set() },
-      error: error.message || 'Failed to check duplicates.',
-    }
   }
 }
 
@@ -226,6 +222,170 @@ export async function createContactNote(dentistId, payload) {
   }
 }
 
+export async function deleteContactNote(id) {
+  try {
+    const { error } = await supabase.from('contact_notes').delete().eq('id', id)
+    if (error) throw error
+    return { error: '' }
+  } catch (error) {
+    return { error: error.message || 'Failed to delete contact note.' }
+  }
+}
+
+export async function getTasks(dentistId) {
+  try {
+    const { data, error } = await supabase
+      .from('crm_tasks')
+      .select('id, dentist_id, title, description, due_date, priority, status, created_at, updated_at')
+      .eq('dentist_id', dentistId)
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return { data: data || [], error: '' }
+  } catch (error) {
+    return { data: [], error: error.message || 'Failed to load tasks.' }
+  }
+}
+
+export async function createTask(dentistId, payload) {
+  try {
+    const { data, error } = await supabase
+      .from('crm_tasks')
+      .insert({ dentist_id: dentistId, ...payload })
+      .select('id, dentist_id, title, description, due_date, priority, status, created_at, updated_at')
+      .single()
+    if (error) throw error
+    return { data, error: '' }
+  } catch (error) {
+    return { data: null, error: error.message || 'Failed to create task.' }
+  }
+}
+
+export async function updateTask(id, payload) {
+  try {
+    const { data, error } = await supabase
+      .from('crm_tasks')
+      .update(payload)
+      .eq('id', id)
+      .select('id, dentist_id, title, description, due_date, priority, status, created_at, updated_at')
+      .single()
+    if (error) throw error
+    return { data, error: '' }
+  } catch (error) {
+    return { data: null, error: error.message || 'Failed to update task.' }
+  }
+}
+
+export async function deleteTask(id) {
+  try {
+    const { error } = await supabase.from('crm_tasks').delete().eq('id', id)
+    if (error) throw error
+    return { error: '' }
+  } catch (error) {
+    return { error: error.message || 'Failed to delete task.' }
+  }
+}
+
+export async function createImportBatch(payload) {
+  try {
+    const { data, error } = await supabase.from('import_batches').insert(payload).select('*').single()
+    if (error) throw error
+    return { data, error: '' }
+  } catch (error) {
+    return { data: null, error: error.message || 'Failed to create import batch.' }
+  }
+}
+
+export async function updateImportBatch(batchId, payload) {
+  try {
+    const { data, error } = await supabase
+      .from('import_batches')
+      .update(payload)
+      .eq('batch_id', batchId)
+      .select('*')
+      .single()
+    if (error) throw error
+    return { data, error: '' }
+  } catch (error) {
+    return { data: null, error: error.message || 'Failed to update import batch.' }
+  }
+}
+
+export async function getRecentImportBatches(limit = 10) {
+  try {
+    const { data, error } = await supabase
+      .from('import_batches')
+      .select('id, batch_id, file_name, import_source, total_rows, successful_rows, failed_rows, duplicate_rows, notes, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return { data: data || [], error: '' }
+  } catch (error) {
+    return { data: [], error: error.message || 'Failed to load import batches.' }
+  }
+}
+
+export async function findDuplicateDentists({ npiNumbers, emails, phones, names, practices }) {
+  try {
+    const duplicateNpis = new Set()
+    const duplicateEmails = new Set()
+    const duplicatePhones = new Set()
+    const duplicateNames = new Set()
+    const duplicatePractices = new Set()
+
+    if (npiNumbers.length) {
+      const { data, error } = await supabase.from('dentists').select('npi_number').in('npi_number', npiNumbers)
+      if (error) throw error
+      data.forEach((row) => row.npi_number && duplicateNpis.add(String(row.npi_number).toLowerCase()))
+    }
+
+    if (emails.length) {
+      const { data, error } = await supabase.from('dentists').select('email').in('email', emails)
+      if (error) throw error
+      data.forEach((row) => row.email && duplicateEmails.add(String(row.email).toLowerCase()))
+    }
+
+    if (phones.length) {
+      const { data, error } = await supabase.from('dentists').select('phone').in('phone', phones)
+      if (error) throw error
+      data.forEach((row) => row.phone && duplicatePhones.add(String(row.phone).toLowerCase()))
+    }
+
+    if (names.length) {
+      const cities = [...new Set(names.map((item) => item.city).filter(Boolean))]
+      const { data, error } = await supabase
+        .from('dentists')
+        .select('first_name, last_name, city')
+        .in('city', cities.length ? cities : ['__none__'])
+      if (error) throw error
+      data.forEach((row) => duplicateNames.add(`${row.first_name || ''}|${row.last_name || ''}|${row.city || ''}`.toLowerCase()))
+    }
+
+    if (practices.length) {
+      const states = [...new Set(practices.map((item) => item.state).filter(Boolean))]
+      const { data, error } = await supabase
+        .from('dentists')
+        .select('practice_name, city, state')
+        .in('state', states.length ? states : ['__none__'])
+      if (error) throw error
+      data.forEach((row) => duplicatePractices.add(`${row.practice_name || ''}|${row.city || ''}|${row.state || ''}`.toLowerCase()))
+    }
+
+    return { data: { duplicateNpis, duplicateEmails, duplicatePhones, duplicateNames, duplicatePractices }, error: '' }
+  } catch (error) {
+    return {
+      data: {
+        duplicateNpis: new Set(),
+        duplicateEmails: new Set(),
+        duplicatePhones: new Set(),
+        duplicateNames: new Set(),
+        duplicatePractices: new Set(),
+      },
+      error: error.message || 'Failed to check duplicates.',
+    }
+  }
+}
+
 async function countByFilter(builder) {
   const { count, error } = await builder.select('id', { count: 'exact', head: true })
   if (error) throw error
@@ -234,51 +394,101 @@ async function countByFilter(builder) {
 
 export async function getDashboardMetrics() {
   try {
-    const today = new Date().toISOString().slice(0, 10)
-    const followUpLimit = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const today = todayIso()
+    const weekEnd = weekEndIso()
 
     const [
-      totalDentists,
-      totalOrthodontists,
-      totalOralSurgeons,
-      totalPediatricDentists,
-      totalPeriodontists,
-      totalEndodontists,
-      contactedLeads,
+      totalLeads,
+      generalDentists,
+      orthodontists,
+      oralSurgeons,
+      pediatricDentists,
+      periodontists,
+      endodontists,
+      newLeads,
       activeProspects,
+      proposalSent,
       clients,
+      overdueFollowUps,
+      followUpsDueToday,
+      followUpsThisWeek,
+      highScoreLeads,
+      upcomingTasks,
+      overdueTasks,
+      topLeads,
       upcomingFollowUps,
+      overdueFollowUpRows,
+      recentContactNotes,
+      recentImportBatches,
+      upcomingTaskRows,
     ] = await Promise.all([
       countByFilter(supabase.from('dentists')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Orthodontists')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Oral Surgeons')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Pediatric Dentists')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Periodontists')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Endodontists')),
-      countByFilter(supabase.from('dentists').not('contact_status', 'is', null).neq('contact_status', 'New')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'General Dentist')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'Orthodontist')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'Oral Surgeon')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'Pediatric Dentist')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'Periodontist')),
+      countByFilter(supabase.from('dentists').eq('specialty', 'Endodontist')),
+      countByFilter(supabase.from('dentists').eq('contact_status', 'New')),
       countByFilter(supabase.from('dentists').eq('contact_status', 'Active Prospect')),
+      countByFilter(supabase.from('dentists').eq('contact_status', 'Proposal Sent')),
       countByFilter(supabase.from('dentists').eq('contact_status', 'Client')),
-      countByFilter(
-        supabase
-          .from('dentists')
-          .not('next_follow_up_date', 'is', null)
-          .gte('next_follow_up_date', today)
-          .lte('next_follow_up_date', followUpLimit),
-      ),
+      countByFilter(supabase.from('dentists').not('next_follow_up_date', 'is', null).lt('next_follow_up_date', today)),
+      countByFilter(supabase.from('dentists').eq('next_follow_up_date', today)),
+      countByFilter(supabase.from('dentists').gte('next_follow_up_date', today).lte('next_follow_up_date', weekEnd)),
+      countByFilter(supabase.from('dentists').gte('lead_score', 25)),
+      countByFilter(supabase.from('crm_tasks').neq('status', 'Completed').gte('due_date', today).lte('due_date', weekEnd)),
+      countByFilter(supabase.from('crm_tasks').neq('status', 'Completed').lt('due_date', today)),
+      supabase.from('dentists').select(baseColumns).order('lead_score', { ascending: false }).limit(10),
+      supabase.from('dentists').select(baseColumns).gte('next_follow_up_date', today).order('next_follow_up_date').limit(10),
+      supabase.from('dentists').select(baseColumns).lt('next_follow_up_date', today).order('next_follow_up_date').limit(10),
+      supabase
+        .from('contact_notes')
+        .select('id, dentist_id, note, contact_method, contact_date, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10),
+      supabase
+        .from('import_batches')
+        .select('id, batch_id, file_name, import_source, total_rows, successful_rows, failed_rows, duplicate_rows, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10),
+      supabase
+        .from('crm_tasks')
+        .select('id, dentist_id, title, description, due_date, priority, status, created_at')
+        .neq('status', 'Completed')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(10),
     ])
+
+    const resultSets = [topLeads, upcomingFollowUps, overdueFollowUpRows, recentContactNotes, recentImportBatches, upcomingTaskRows]
+    const resultError = resultSets.find((result) => result.error)?.error
+    if (resultError) throw resultError
 
     return {
       data: {
-        totalDentists,
-        totalOrthodontists,
-        totalOralSurgeons,
-        totalPediatricDentists,
-        totalPeriodontists,
-        totalEndodontists,
-        contactedLeads,
+        totalLeads,
+        generalDentists,
+        orthodontists,
+        oralSurgeons,
+        pediatricDentists,
+        periodontists,
+        endodontists,
+        newLeads,
         activeProspects,
+        proposalSent,
         clients,
-        upcomingFollowUps,
+        overdueFollowUps,
+        followUpsDueToday,
+        followUpsThisWeek,
+        highScoreLeads,
+        upcomingTasks,
+        overdueTasks,
+        topLeads: topLeads.data || [],
+        upcomingFollowUps: upcomingFollowUps.data || [],
+        overdueFollowUpRows: overdueFollowUpRows.data || [],
+        recentContactNotes: recentContactNotes.data || [],
+        recentImportBatches: recentImportBatches.data || [],
+        upcomingTaskRows: upcomingTaskRows.data || [],
       },
       error: '',
     }

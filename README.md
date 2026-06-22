@@ -1,187 +1,182 @@
 # OmniHealth
 
-OmniHealth is a React + Vite lead management application for accounting and advisory teams targeting healthcare practice owners, starting with dental specialties in NY, NJ, and CT.
+OmniHealth is a React + Vite CRM for accounting and advisory teams managing dental and medical practice-owner leads. The current focus is dental specialties in NY, NJ, and CT, with Supabase handling auth, Postgres data, RLS, imports, notes, tasks, and lead scoring.
 
-## Stack
+## Tech Stack
 
-- React 19
-- Vite
-- Supabase (Postgres)
+- React + Vite
 - JavaScript
-- Vercel-ready static frontend deployment
+- Supabase Auth + Postgres
+- PapaParse for CSV import/export
+- Vercel-ready static deployment
 
 ## Features
 
-- Dashboard with lead and pipeline counts
-- Three-panel CRM layout: sidebar, main table, right detail panel
-- Server-side search, filters, sorting, and pagination for large lead lists
-- Dentist create, edit, and delete flows
-- Contact notes and history timeline
-- Contact status and follow-up management
-- Bulk CSV upload with validation, duplicate detection, preview, and batched Supabase inserts
-- Saved views
-- CSV export
-- Responsive layout with dark mode
+- Email/password login with Supabase Auth
+- Protected dashboard, leads, and import pages
+- Supabase CRUD for dentists
+- Contact notes with cascade delete from dentists
+- CRM tasks per dentist
+- CSV import with validation, preview, duplicate detection, import batch tracking, and batched inserts
+- Search, filters, sorting, pagination, saved views, and CSV export
+- Lead scoring on create/edit/import
+- Follow-up tracking and dashboard work queues
+- Dark mode support
 
-## Project structure
-
-```text
-src/
-  components/
-    common/
-    crm/
-    dashboard/
-    layout/
-  hooks/
-  pages/
-  services/
-  utils/
-```
-
-## Environment variables
-
-Create a local `.env` from `.env.example`.
-
-```bash
-cp .env.example .env
-```
-
-Required values:
-
-```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-## Supabase setup
-
-The app expects these tables:
-
-### `dentists`
-
-Existing table used by the CRM:
-
-- `id`
-- `first_name`
-- `last_name`
-- `credentials`
-- `specialty`
-- `npi_number`
-- `graduation_year`
-- `estimated_age_range`
-- `years_in_practice`
-- `practice_name`
-- `website`
-- `phone`
-- `email`
-- `address`
-- `city`
-- `state`
-- `zip_code`
-- `owner_status`
-- `number_of_locations`
-- `solo_practice`
-- `multi_location`
-- `google_rating`
-- `google_review_count`
-- `contact_status`
-- `lead_source`
-- `notes`
-- `next_follow_up_date`
-- `tags`
-- `import_source`
-- `import_batch_id`
-- `created_at`
-- `updated_at`
-
-### `contact_notes`
-
-If `contact_notes` is not already present, create it with:
-
-```sql
-create table if not exists public.contact_notes (
-  id bigint generated always as identity primary key,
-  dentist_id uuid not null references public.dentists (id) on delete cascade,
-  note text not null,
-  contact_method text,
-  contact_date date,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists contact_notes_dentist_id_idx
-  on public.contact_notes (dentist_id, created_at desc);
-```
-
-Recommended indexes for scale:
-
-```sql
-create index if not exists dentists_state_idx on public.dentists (state);
-create index if not exists dentists_specialty_idx on public.dentists (specialty);
-create index if not exists dentists_contact_status_idx on public.dentists (contact_status);
-create index if not exists dentists_owner_status_idx on public.dentists (owner_status);
-create index if not exists dentists_graduation_year_idx on public.dentists (graduation_year);
-create index if not exists dentists_next_follow_up_date_idx on public.dentists (next_follow_up_date);
-```
-
-If you use Row Level Security, add policies that allow the frontend role to read and write both tables.
-
-## Run locally
+## Local Setup
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
-Default Vite URL:
+Required environment variables:
 
-```text
-http://localhost:5173
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
-## Build for production
+## Supabase Setup
+
+Run [supabase/schema.sql](/Users/billyyan/Desktop/Medical-CRM/medical-crm/supabase/schema.sql) in the Supabase SQL editor.
+
+Important: the script intentionally drops and recreates `public.contact_notes` because this project expects `dentists.id` and `contact_notes.dentist_id` to both be `bigint`. If you already have contact notes to preserve, migrate them before running that section.
+
+The SQL file includes:
+
+- standardized `contact_status` values
+- singular dental specialty migration
+- `lead_score`, `last_contact_date`, and `follow_up_priority`
+- rebuilt `contact_notes` with `dentist_id bigint`
+- `crm_tasks`
+- `import_batches`
+- indexes
+- `updated_at` triggers
+- RLS policies for authenticated users
+
+## Supabase Auth
+
+Enable email/password auth in Supabase:
+
+1. Open Supabase Dashboard.
+2. Go to Authentication > Providers.
+3. Enable Email.
+4. Create the first user in Authentication > Users.
+5. Use that email/password on `/login`.
+
+Anonymous users are blocked by RLS. Authenticated users can manage CRM records for this private/internal MVP.
+
+For a multi-user/team version later, replace the broad authenticated policies with `user_id` or `account_id` scoped policies.
+
+## CRM Data Values
+
+Allowed `contact_status` values:
+
+```text
+New
+Attempted
+Contacted
+Active Prospect
+Proposal Sent
+Client
+Nurture
+Unqualified
+Lost
+```
+
+Allowed dental specialty values:
+
+```text
+General Dentist
+Orthodontist
+Oral Surgeon
+Pediatric Dentist
+Periodontist
+Endodontist
+```
+
+## CSV Import
+
+Open `/import`, upload a CSV, review validation errors, then confirm import.
+
+Supported duplicate checks:
+
+- `npi_number`
+- `email`
+- `phone`
+- same `first_name` + `last_name` + `city`
+- same `practice_name` + `city` + `state`
+
+Recommended headers:
+
+```text
+first_name,last_name,credentials,specialty,npi_number,graduation_year,practice_name,website,phone,email,address,city,state,zip_code,estimated_age_range,owner_status,contact_status,lead_source,tags,notes
+```
+
+Common variants such as `first name`, `lastname`, `npi`, `practice name`, `business name`, `zip`, `zipcode`, `owner status`, and `lead source` are also mapped.
+
+Import normalizes:
+
+- state to uppercase
+- specialty to singular standard values
+- contact status to approved values
+- blank strings to null
+- numeric year/rating/review fields
+- lead score
+- import source and import batch ID
+
+## Lead Scoring
+
+Lead score is calculated on create, edit, and import:
+
+- `+15` if `owner_status` is `Owner` or `Partner`
+- `+10` if `multi_location` is true
+- `+10` if specialty is `Orthodontist` or `Oral Surgeon`
+- `+8` if `graduation_year` is before 1995
+- `+5` if `google_review_count >= 100`
+- `+3` if `google_rating >= 4.5`
+- `-10` if `owner_status` is `Associate`
+
+Missing data contributes `0`.
+
+## Export
+
+The Leads page exports the currently filtered Supabase result set to:
+
+```text
+medical-crm-export-YYYY-MM-DD.csv
+```
+
+## Deploy To Vercel
+
+1. Import the repo into Vercel.
+2. Set `VITE_SUPABASE_URL`.
+3. Set `VITE_SUPABASE_ANON_KEY`.
+4. Use build command `npm run build`.
+5. Use output directory `dist`.
+
+## Scripts
 
 ```bash
+npm run dev
+npm run lint
 npm run build
 ```
 
-## Deploy to Vercel
+## Known Limitations
 
-1. Import the repo into Vercel.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project settings.
-3. Deploy with the default Vite build settings.
+- RLS is intentionally broad for authenticated internal users.
+- CSV import validates and skips duplicates, but does not update existing CRM records.
+- Dashboard assumes `crm_tasks` and `import_batches` exist.
+- The current app does not include role-based permissions or team/account partitioning.
 
-Build settings:
+## Roadmap
 
-- Build command: `npm run build`
-- Output directory: `dist`
-
-## Notes on scale
-
-- Lead table uses server-side pagination with a page size of 25.
-- Search and filters execute in Supabase instead of loading the full dataset into the browser.
-- CSV export can fetch the full filtered result set in batches for operational exports.
-- CSV import inserts valid rows in batches of 500 and skips rows with validation errors or detected duplicates.
-
-## CSV import
-
-The import page accepts common header variants and maps them to the `dentists` table. Recommended headers:
-
-```text
-first_name,last_name,credentials,specialty,npi_number,practice_name,phone,email,website,address,city,state,zip_code,graduation_year,estimated_age_range,owner_status,contact_status,next_follow_up_date,tags,notes
-```
-
-Duplicate detection checks:
-
-- existing CRM records by `npi_number`
-- existing CRM records by `email`
-- duplicate `npi_number` values inside the uploaded CSV
-- duplicate `email` values inside the uploaded CSV
-
-## MVP expansion path
-
-The current app is tuned for dental leads and can be extended later by:
-
-- adding specialty presets for physicians, veterinarians, physical therapists, and mental health practices
-- introducing role-based auth
-- adding pipeline stages, tasks, and bulk actions
-- adding enrichment jobs and import workflows
+- Account-scoped RLS for teams
+- User-owned tasks
+- Bulk edit actions
+- Import update/merge mode
+- More provider verticals: physicians, veterinarians, physical therapists, and mental health practices
+- Automated enrichment and outreach integrations

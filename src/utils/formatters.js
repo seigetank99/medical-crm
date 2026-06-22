@@ -1,3 +1,35 @@
+import { contactStatusOptions, specialtyOptions } from './constants.js'
+
+const specialtyAliases = {
+  'general dentists': 'General Dentist',
+  'general dentist': 'General Dentist',
+  orthodontists: 'Orthodontist',
+  orthodontist: 'Orthodontist',
+  'oral surgeons': 'Oral Surgeon',
+  'oral surgeon': 'Oral Surgeon',
+  'pediatric dentists': 'Pediatric Dentist',
+  'pediatric dentist': 'Pediatric Dentist',
+  periodontists: 'Periodontist',
+  periodontist: 'Periodontist',
+  endodontists: 'Endodontist',
+  endodontist: 'Endodontist',
+}
+
+const statusAliases = {
+  'not contacted': 'New',
+  new: 'New',
+  attempted: 'Attempted',
+  connected: 'Contacted',
+  contacted: 'Contacted',
+  'meeting scheduled': 'Active Prospect',
+  'active prospect': 'Active Prospect',
+  'proposal sent': 'Proposal Sent',
+  client: 'Client',
+  nurture: 'Nurture',
+  unqualified: 'Unqualified',
+  lost: 'Lost',
+}
+
 export function formatDoctorName(dentist) {
   return [dentist.first_name, dentist.last_name].filter(Boolean).join(' ') || 'Unnamed dentist'
 }
@@ -27,6 +59,41 @@ export function normalizeWebsite(url) {
   return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
 }
 
+export function normalizeSpecialty(value) {
+  if (!value) return null
+  const normalized = specialtyAliases[String(value).trim().toLowerCase()]
+  return normalized || (specialtyOptions.includes(value) ? value : String(value).trim())
+}
+
+export function normalizeContactStatus(value) {
+  if (!value) return 'New'
+  const normalized = statusAliases[String(value).trim().toLowerCase()]
+  return normalized || (contactStatusOptions.includes(value) ? value : 'New')
+}
+
+export function normalizeState(value) {
+  return value ? String(value).trim().toUpperCase() : null
+}
+
+export function calculateLeadScore(dentist) {
+  let score = 0
+  const ownerStatus = dentist.owner_status
+  const specialty = normalizeSpecialty(dentist.specialty)
+  const graduationYear = Number(dentist.graduation_year)
+  const reviewCount = Number(dentist.google_review_count)
+  const rating = Number(dentist.google_rating)
+
+  if (ownerStatus === 'Owner' || ownerStatus === 'Partner') score += 15
+  if (dentist.multi_location === true) score += 10
+  if (specialty === 'Orthodontist' || specialty === 'Oral Surgeon') score += 10
+  if (graduationYear && graduationYear < 1995) score += 8
+  if (reviewCount >= 100) score += 5
+  if (rating >= 4.5) score += 3
+  if (ownerStatus === 'Associate') score -= 10
+
+  return Math.max(score, 0)
+}
+
 export function cleanDentistPayload(payload) {
   const next = { ...payload }
 
@@ -37,10 +104,19 @@ export function cleanDentistPayload(payload) {
 
   if (next.google_rating === '') next.google_rating = null
   if (next.next_follow_up_date === '') next.next_follow_up_date = null
+  if (next.last_contact_date === '') next.last_contact_date = null
+  if (next.state) next.state = normalizeState(next.state)
+  if (next.specialty) next.specialty = normalizeSpecialty(next.specialty)
+  if (next.contact_status) next.contact_status = normalizeContactStatus(next.contact_status)
+  if (!next.contact_status) next.contact_status = 'New'
+  if (!next.follow_up_priority) next.follow_up_priority = 'Medium'
 
   Object.keys(next).forEach((key) => {
+    if (typeof next[key] === 'string') next[key] = next[key].trim()
     if (next[key] === '') next[key] = null
   })
+
+  next.lead_score = calculateLeadScore(next)
 
   return next
 }

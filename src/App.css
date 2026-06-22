@@ -72,7 +72,8 @@
 .ghost-button,
 .primary-button,
 .icon-button,
-.theme-toggle {
+.theme-toggle,
+.text-button {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -104,7 +105,8 @@
 .ghost-button:hover,
 .icon-button:hover,
 .theme-toggle:hover,
-.sort-button:hover {
+.sort-button:hover,
+.text-button:hover {
   background: var(--surface-hover);
 }
 
@@ -415,6 +417,7 @@
 .status-pill {
   display: inline-flex;
   margin-top: 10px;
+  margin-right: 8px;
   padding: 6px 10px;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -423,11 +426,67 @@
   font-weight: 600;
 }
 
+.score-pill {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .contact-stack,
 .note-composer,
-.notes-timeline {
+.notes-timeline,
+.task-composer,
+.task-list {
   display: grid;
   gap: 12px;
+}
+
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-composer input,
+.task-composer select,
+.task-composer textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.task-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.task-item.completed {
+  opacity: 0.68;
+}
+
+.task-item p,
+.task-item span {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .inline-icon {
@@ -458,6 +517,12 @@
 .insight-list,
 .coverage-grid strong {
   margin: 0;
+}
+
+.text-button {
+  width: max-content;
+  min-height: 32px;
+  padding: 0 10px;
 }
 
 .timeline-meta {
@@ -507,6 +572,40 @@
   display: grid;
   gap: 20px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-tables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dashboard-list {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-list-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.dashboard-list-row span {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .insight-list {
@@ -563,7 +662,7 @@
 
 .import-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -585,6 +684,62 @@
 .preview-note {
   margin: 0;
   color: var(--text-muted);
+}
+
+.page-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-size-control select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  min-height: 36px;
+  padding: 0 8px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-email {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  margin: 0;
 }
 
 .state-card {
@@ -647,7 +802,8 @@
 
 @media (max-width: 1180px) {
   .workspace-grid,
-  .dashboard-lower {
+  .dashboard-lower,
+  .dashboard-tables {
     grid-template-columns: 1fr;
   }
 
@@ -702,7 +858,9 @@
   .modal-grid,
   .coverage-grid,
   .quick-facts,
-  .stats-grid {
+  .stats-grid,
+  .task-grid,
+  .import-summary {
     grid-template-columns: 1fr;
   }
 

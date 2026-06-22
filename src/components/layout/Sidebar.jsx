@@ -53,12 +53,12 @@ function Sidebar({ currentPath, activeSavedView, onNavigate }) {
           <span>Focus specialties</span>
         </div>
         <ul className="sidebar-list">
-          <li>General Dentists</li>
-          <li>Orthodontists</li>
-          <li>Oral Surgeons</li>
-          <li>Pediatric Dentists</li>
-          <li>Periodontists</li>
-          <li>Endodontists</li>
+          <li>General Dentist</li>
+          <li>Orthodontist</li>
+          <li>Oral Surgeon</li>
+          <li>Pediatric Dentist</li>
+          <li>Periodontist</li>
+          <li>Endodontist</li>
         </ul>
       </section>
 

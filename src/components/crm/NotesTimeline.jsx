@@ -2,7 +2,7 @@ import LoadingState from '../common/LoadingState.jsx'
 import EmptyState from '../common/EmptyState.jsx'
 import { formatDate } from '../../utils/formatters.js'
 
-function NotesTimeline({ notes, loading }) {
+function NotesTimeline({ notes, loading, onDeleteNote }) {
   if (loading) return <LoadingState label="Loading contact history..." />
 
   if (!notes.length) {
@@ -23,6 +23,11 @@ function NotesTimeline({ notes, loading }) {
             <span>{formatDate(item.contact_date || item.created_at)}</span>
           </div>
           <p>{item.note}</p>
+          {onDeleteNote ? (
+            <button type="button" className="text-button danger" onClick={() => onDeleteNote(item)}>
+              Delete note
+            </button>
+          ) : null}
         </article>
       ))}
     </div>

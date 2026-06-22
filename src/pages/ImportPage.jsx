@@ -1,12 +1,19 @@
 import { CheckCircle2, FileUp, Upload, XCircle } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import EmptyState from '../components/common/EmptyState.jsx'
 import LoadingState from '../components/common/LoadingState.jsx'
-import { createDentistRecordsBatch, findDuplicateDentists } from '../services/dentistsService.js'
+import {
+  createDentistRecordsBatch,
+  createImportBatch,
+  findDuplicateDentists,
+  getRecentImportBatches,
+  updateImportBatch,
+} from '../services/dentistsService.js'
 import { isSupabaseConfigured } from '../services/supabaseClient.js'
 import {
   annotateDuplicates,
   chunkRows,
+  createImportBatchId,
   getDuplicateLookupValues,
   mapCsvRows,
   parseCsv,
@@ -21,9 +28,21 @@ function ImportPage() {
   const [importing, setImporting] = useState(false)
   const [message, setMessage] = useState('')
   const [summary, setSummary] = useState(null)
+  const [importSource, setImportSource] = useState('CSV Upload')
+  const [recentBatches, setRecentBatches] = useState([])
 
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows])
   const invalidRows = rows.length - validRows.length
+
+  useEffect(() => {
+    async function loadBatches() {
+      if (!isSupabaseConfigured) return
+      const batchesResult = await getRecentImportBatches()
+      if (!batchesResult.error) setRecentBatches(batchesResult.data)
+    }
+
+    void loadBatches()
+  }, [])
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0]
@@ -47,6 +66,8 @@ function ImportPage() {
       }
 
       setRows(annotateDuplicates(mappedRows, duplicateResult.data))
+      const batchesResult = await getRecentImportBatches()
+      if (!batchesResult.error) setRecentBatches(batchesResult.data)
     } catch (error) {
       setMessage(error.message || 'Unable to parse CSV.')
     } finally {
@@ -59,11 +80,29 @@ function ImportPage() {
 
     setImporting(true)
     setMessage('')
+    const batchId = createImportBatchId()
     let successCount = 0
     let failureCount = 0
+    const duplicateCount = rows.filter((row) => row.errors.some((error) => error.toLowerCase().includes('duplicate'))).length
+
+    await createImportBatch({
+      batch_id: batchId,
+      file_name: fileName,
+      import_source: importSource,
+      total_rows: rows.length,
+      successful_rows: 0,
+      failed_rows: 0,
+      duplicate_rows: duplicateCount,
+    })
 
     for (const chunk of chunkRows(validRows, importBatchSize)) {
-      const result = await createDentistRecordsBatch(chunk.map((row) => row.data))
+      const result = await createDentistRecordsBatch(
+        chunk.map((row) => ({
+          ...row.data,
+          import_batch_id: batchId,
+          import_source: importSource,
+        })),
+      )
       if (result.error) {
         failureCount += chunk.length
         setMessage(result.error)
@@ -72,7 +111,14 @@ function ImportPage() {
       }
     }
 
-    setSummary({ successCount, failureCount, skippedCount: invalidRows })
+    await updateImportBatch(batchId, {
+      successful_rows: successCount,
+      failed_rows: failureCount + invalidRows,
+      duplicate_rows: duplicateCount,
+    })
+    const batchesResult = await getRecentImportBatches()
+    if (!batchesResult.error) setRecentBatches(batchesResult.data)
+    setSummary({ batchId, successCount, failureCount, skippedCount: invalidRows, duplicateCount, totalRows: rows.length })
     setImporting(false)
   }
 
@@ -101,6 +147,11 @@ function ImportPage() {
           <input type="file" accept=".csv,text/csv" onChange={handleFile} />
         </label>
 
+        <label className="field-group">
+          <span>Import source</span>
+          <input value={importSource} onChange={(event) => setImportSource(event.target.value)} />
+        </label>
+
         {message ? <div className="notice error">{message}</div> : null}
 
         {summary ? (
@@ -108,6 +159,7 @@ function ImportPage() {
             <SummaryItem icon={<CheckCircle2 size={18} />} label="Imported" value={summary.successCount} />
             <SummaryItem icon={<XCircle size={18} />} label="Failed" value={summary.failureCount} />
             <SummaryItem icon={<XCircle size={18} />} label="Skipped" value={summary.skippedCount} />
+            <SummaryItem icon={<XCircle size={18} />} label="Duplicates" value={summary.duplicateCount} />
           </div>
         ) : null}
       </section>
@@ -166,6 +218,47 @@ function ImportPage() {
           description="Import leads with headers such as first_name, last_name, specialty, practice_name, phone, email, website, address, city, state, zip_code, graduation_year, owner_status, contact_status, notes, npi_number, and tags."
         />
       )}
+
+      <section className="panel import-preview">
+        <div className="panel-heading">
+          <div>
+            <h2>Recent import batches</h2>
+            <p>Latest batch records stored in Supabase.</p>
+          </div>
+        </div>
+        {recentBatches.length ? (
+          <div className="table-wrap">
+            <table className="crm-table import-table">
+              <thead>
+                <tr>
+                  <th>Batch ID</th>
+                  <th>File</th>
+                  <th>Source</th>
+                  <th>Total</th>
+                  <th>Successful</th>
+                  <th>Failed</th>
+                  <th>Duplicates</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentBatches.map((batch) => (
+                  <tr key={batch.id}>
+                    <td>{batch.batch_id}</td>
+                    <td>{batch.file_name || '—'}</td>
+                    <td>{batch.import_source || '—'}</td>
+                    <td>{batch.total_rows || 0}</td>
+                    <td>{batch.successful_rows || 0}</td>
+                    <td>{batch.failed_rows || 0}</td>
+                    <td>{batch.duplicate_rows || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No import batches yet" description="Completed imports will appear here." />
+        )}
+      </section>
     </div>
   )
 }

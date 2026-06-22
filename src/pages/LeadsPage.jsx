@@ -26,6 +26,7 @@ function LeadsPage() {
     sort,
     page,
     pageSize,
+    setPageSize,
     selectedIds,
     selectedDentist,
     editableDentist,
@@ -34,7 +35,10 @@ function LeadsPage() {
     saving,
     deleting,
     noteDraft,
+    tasks,
+    taskDraft,
     setNoteDraft,
+    setTaskDraft,
     setSelectedDentist,
     setSearch,
     setPage,
@@ -49,6 +53,10 @@ function LeadsPage() {
     updateDentistFromForm,
     deleteDentist,
     addNote,
+    removeNote,
+    addTask,
+    completeTask,
+    removeTask,
     refresh,
     setSelectedDentistFromId,
     applySavedView,
@@ -85,7 +93,7 @@ function LeadsPage() {
     const rows = await refresh({ exportAll: true })
     if (!rows) return
     const csv = buildCsv(rows)
-    downloadCsv(csv, `omnihealth-leads-${new Date().toISOString().slice(0, 10)}.csv`)
+    downloadCsv(csv, `medical-crm-export-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   const handleDelete = async () => {
@@ -192,6 +200,7 @@ function LeadsPage() {
               totalPages={totalPages}
               pageSize={pageSize}
               totalCount={totalCount}
+              onPageSizeChange={setPageSize}
               onSelectRow={toggleRowSelection}
               onSelectAll={toggleSelectAll}
               onSort={setSort}
@@ -209,11 +218,18 @@ function LeadsPage() {
           saving={saving}
           deleting={deleting}
           noteDraft={noteDraft}
+          tasks={tasks}
+          taskDraft={taskDraft}
           onFieldChange={updateEditableDentist}
           onSave={saveDentist}
           onDelete={handleDelete}
           onNoteDraftChange={(field, value) => setNoteDraft((current) => ({ ...current, [field]: value }))}
           onCreateNote={addNote}
+          onDeleteNote={removeNote}
+          onTaskDraftChange={(field, value) => setTaskDraft((current) => ({ ...current, [field]: value }))}
+          onCreateTask={addTask}
+          onCompleteTask={completeTask}
+          onDeleteTask={removeTask}
         />
       </div>
     </>

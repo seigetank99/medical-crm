@@ -2,16 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createContactNote,
   createDentistRecord,
+  createTask,
+  deleteContactNote,
   deleteDentistRecord,
+  deleteTask,
   getContactNotes,
   getDentistById,
   getDentists,
+  getTasks,
+  updateTask,
   updateDentistRecord,
 } from '../services/dentistsService.js'
-import { blankDentistForm, createDefaultNoteDraft, defaultFilters } from '../utils/constants.js'
+import { blankDentistForm, blankTaskForm, createDefaultNoteDraft, defaultFilters } from '../utils/constants.js'
 import { cleanDentistPayload } from '../utils/formatters.js'
-
-const pageSize = 25
 
 export function useDentists() {
   const configured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -23,17 +26,20 @@ export function useDentists() {
   const [filters, setFilters] = useState(defaultFilters)
   const [sort, setSortState] = useState({ column: 'updated_at', direction: 'desc' })
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSizeState] = useState(50)
   const [selectedIds, setSelectedIds] = useState([])
   const [selectedDentistId, setSelectedDentistId] = useState(null)
   const [selectedDentist, setSelectedDentist] = useState(null)
   const [editableDentist, setEditableDentist] = useState(blankDentistForm)
   const [notes, setNotes] = useState([])
+  const [tasks, setTasks] = useState([])
   const [notesLoading, setNotesLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [noteDraft, setNoteDraft] = useState(createDefaultNoteDraft)
+  const [taskDraft, setTaskDraft] = useState({ ...blankTaskForm })
 
-  const totalPages = useMemo(() => Math.ceil(totalCount / pageSize), [totalCount])
+  const totalPages = useMemo(() => Math.ceil(totalCount / pageSize), [pageSize, totalCount])
 
   const loadDentists = useCallback(
     async ({ exportAll = false } = {}) => {
@@ -64,7 +70,7 @@ export function useDentists() {
 
       return result.data
     },
-    [configured, page, search, filters, sort],
+    [configured, page, pageSize, search, filters, sort],
   )
 
   useEffect(() => {
@@ -80,6 +86,7 @@ export function useDentists() {
       if (!selectedDentistId) {
         setSelectedDentist(null)
         setNotes([])
+        setTasks([])
         setEditableDentist({ ...blankDentistForm })
         return
       }
@@ -93,11 +100,16 @@ export function useDentists() {
       setSelectedDentist(dentistResult.data)
       setEditableDentist(dentistResult.data)
       setNotesLoading(true)
-      const result = await getContactNotes(selectedDentistId)
+      const [result, tasksResult] = await Promise.all([getContactNotes(selectedDentistId), getTasks(selectedDentistId)])
       if (result.error) {
         setNotes([])
       } else {
         setNotes(result.data)
+      }
+      if (tasksResult.error) {
+        setTasks([])
+      } else {
+        setTasks(tasksResult.data)
       }
       setNotesLoading(false)
     }
@@ -114,6 +126,11 @@ export function useDentists() {
     setPage(1)
     setSearch('')
     setFilters({ ...defaultFilters })
+  }, [])
+
+  const setPageSize = useCallback((value) => {
+    setPage(1)
+    setPageSizeState(Number(value))
   }, [])
 
   const setSort = useCallback((column) => {
@@ -181,6 +198,8 @@ export function useDentists() {
     setSelectedDentistId(null)
     setSelectedDentist(null)
     setEditableDentist({ ...blankDentistForm })
+    setTasks([])
+    setNotes([])
     setSelectedIds((current) => current.filter((id) => id !== selectedDentistId))
     await loadDentists()
   }, [loadDentists, selectedDentistId])
@@ -198,7 +217,54 @@ export function useDentists() {
     if (editableDentist.contact_status !== 'Contacted') {
       updateEditableDentist('contact_status', 'Contacted')
     }
+    updateEditableDentist('last_contact_date', noteDraft.contact_date)
   }, [editableDentist.contact_status, noteDraft, selectedDentistId, updateEditableDentist])
+
+  const removeNote = useCallback(async (note) => {
+    if (!note?.id) return
+    const result = await deleteContactNote(note.id)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setNotes((current) => current.filter((item) => item.id !== note.id))
+  }, [])
+
+  const addTask = useCallback(async () => {
+    if (!selectedDentistId || !taskDraft.title.trim()) return
+    const result = await createTask(selectedDentistId, {
+      ...taskDraft,
+      due_date: taskDraft.due_date || null,
+      description: taskDraft.description || null,
+    })
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setTaskDraft({ ...blankTaskForm })
+    const tasksResult = await getTasks(selectedDentistId)
+    if (!tasksResult.error) setTasks(tasksResult.data)
+  }, [selectedDentistId, taskDraft])
+
+  const completeTask = useCallback(async (task) => {
+    if (!task?.id) return
+    const result = await updateTask(task.id, { status: 'Completed' })
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setTasks((current) => current.map((item) => (item.id === task.id ? result.data : item)))
+  }, [])
+
+  const removeTask = useCallback(async (task) => {
+    if (!task?.id) return
+    const result = await deleteTask(task.id)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setTasks((current) => current.filter((item) => item.id !== task.id))
+  }, [])
 
   const updateDentistFromForm = useCallback(async (id, form) => {
     setSaving(true)
@@ -242,11 +308,14 @@ export function useDentists() {
     selectedDentist,
     editableDentist,
     notes,
+    tasks,
     notesLoading,
     saving,
     deleting,
     noteDraft,
+    taskDraft,
     setNoteDraft,
+    setTaskDraft,
     setSelectedDentist: (dentist) => setSelectedDentistId(dentist?.id || null),
     setSelectedDentistFromId,
     setSearch: (value) => {
@@ -254,6 +323,7 @@ export function useDentists() {
       setSearch(value)
     },
     setPage,
+    setPageSize,
     updateFilter,
     resetFilters,
     setSort,
@@ -265,6 +335,10 @@ export function useDentists() {
     updateDentistFromForm,
     deleteDentist,
     addNote,
+    removeNote,
+    addTask,
+    completeTask,
+    removeTask,
     refresh,
     applySavedView,
   }

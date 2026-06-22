@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import AppShell from './components/layout/AppShell.jsx'
+import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import ImportPage from './pages/ImportPage.jsx'
 import LeadsPage from './pages/LeadsPage.jsx'
+import LoginPage from './pages/LoginPage.jsx'
 import { savedViews } from './utils/constants.js'
 import './App.css'
 
@@ -48,9 +50,10 @@ function App() {
     >
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/leads" element={<LeadsPage />} />
-        <Route path="/import" element={<ImportPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
+        <Route path="/import" element={<ProtectedRoute><ImportPage /></ProtectedRoute>} />
       </Routes>
     </AppShell>
   )

@@ -5,12 +5,12 @@ export const navItems = [
 ]
 
 export const specialtyOptions = [
-  'General Dentists',
-  'Orthodontists',
-  'Oral Surgeons',
-  'Pediatric Dentists',
-  'Periodontists',
-  'Endodontists',
+  'General Dentist',
+  'Orthodontist',
+  'Oral Surgeon',
+  'Pediatric Dentist',
+  'Periodontist',
+  'Endodontist',
 ]
 
 export const stateOptions = ['NY', 'NJ', 'CT']
@@ -24,6 +24,7 @@ export const contactStatusOptions = [
   'Client',
   'Nurture',
   'Unqualified',
+  'Lost',
 ]
 
 export const ownerStatusOptions = ['Owner', 'Associate', 'Partner', 'Unknown']
@@ -32,7 +33,87 @@ export const ageRangeOptions = ['30-39', '40-49', '50-59', '60-69', '70+']
 
 export const contactMethodOptions = ['Phone', 'Email', 'LinkedIn', 'Text', 'In Person']
 
+export const followUpPriorityOptions = ['Low', 'Medium', 'High', 'Urgent']
+
+export const taskPriorityOptions = ['Low', 'Medium', 'High', 'Urgent']
+
+export const taskStatusOptions = ['Open', 'In Progress', 'Completed', 'Canceled']
+
+export const pageSizeOptions = [25, 50, 100, 200]
+
 export const savedViews = [
+  {
+    id: 'all-leads',
+    label: 'All Leads',
+    description: 'Every CRM lead',
+    filters: {},
+  },
+  {
+    id: 'new-leads',
+    label: 'New Leads',
+    description: 'Fresh records not yet worked',
+    filters: { contactStatus: 'New' },
+  },
+  {
+    id: 'follow-up-today',
+    label: 'Follow Up Today',
+    description: 'Follow-ups due today',
+    filters: { followUpPreset: 'today' },
+  },
+  {
+    id: 'overdue-follow-ups',
+    label: 'Overdue Follow Ups',
+    description: 'Past-due follow-ups',
+    filters: { followUpPreset: 'overdue' },
+  },
+  {
+    id: 'high-score-leads',
+    label: 'High Score Leads',
+    description: 'Lead score 25+',
+    filters: { leadScoreMin: '25' },
+  },
+  {
+    id: 'ny-dentists',
+    label: 'NY Dentists',
+    description: 'New York territory',
+    filters: { state: 'NY' },
+  },
+  {
+    id: 'nj-dentists',
+    label: 'NJ Dentists',
+    description: 'New Jersey territory',
+    filters: { state: 'NJ' },
+  },
+  {
+    id: 'ct-dentists',
+    label: 'CT Dentists',
+    description: 'Connecticut territory',
+    filters: { state: 'CT' },
+  },
+  {
+    id: 'orthodontists',
+    label: 'Orthodontists',
+    description: 'Orthodontic practices',
+    filters: { specialty: 'Orthodontist' },
+  },
+  {
+    id: 'oral-surgeons',
+    label: 'Oral Surgeons',
+    description: 'Oral surgery practices',
+    filters: { specialty: 'Oral Surgeon' },
+  },
+  {
+    id: 'retirement-candidates',
+    label: 'Retirement Candidates',
+    description: 'Older or tagged owners',
+    filters: { retirementCandidates: true },
+  },
+  {
+    id: 'clients',
+    label: 'Clients',
+    description: 'Closed client relationships',
+    filters: { contactStatus: 'Client' },
+  },
   {
     id: 'ny-owners',
     label: 'NY Owners',
@@ -63,7 +144,14 @@ export const defaultFilters = {
   graduationYearTo: '',
   followUpFrom: '',
   followUpTo: '',
+  followUpPreset: '',
+  followUpPriority: '',
+  leadScoreMin: '',
+  leadScoreMax: '',
   tags: '',
+  importSource: '',
+  importBatchId: '',
+  retirementCandidates: false,
 }
 
 export const blankDentistForm = {
@@ -89,13 +177,24 @@ export const blankDentistForm = {
   multi_location: false,
   google_rating: '',
   google_review_count: '',
+  lead_score: 0,
   contact_status: 'New',
   lead_source: '',
   notes: '',
   next_follow_up_date: '',
+  last_contact_date: '',
+  follow_up_priority: 'Medium',
   tags: '',
   import_source: '',
   import_batch_id: '',
+}
+
+export const blankTaskForm = {
+  title: '',
+  description: '',
+  due_date: '',
+  priority: 'Medium',
+  status: 'Open',
 }
 
 export const defaultNoteDraft = {

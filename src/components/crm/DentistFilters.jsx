@@ -2,6 +2,7 @@ import { Search, X } from 'lucide-react'
 import {
   ageRangeOptions,
   contactStatusOptions,
+  followUpPriorityOptions,
   ownerStatusOptions,
   specialtyOptions,
   stateOptions,
@@ -101,6 +102,29 @@ function DentistFilters({
             />
           </div>
         </div>
+        <SelectField
+          label="Follow-up priority"
+          value={filters.followUpPriority}
+          options={followUpPriorityOptions}
+          onChange={(value) => onFilterChange('followUpPriority', value)}
+        />
+        <div className="field-group">
+          <span>Lead score</span>
+          <div className="range-fields">
+            <input
+              type="number"
+              placeholder="Min"
+              value={filters.leadScoreMin}
+              onChange={(event) => onFilterChange('leadScoreMin', event.target.value)}
+            />
+            <input
+              type="number"
+              placeholder="Max"
+              value={filters.leadScoreMax}
+              onChange={(event) => onFilterChange('leadScoreMax', event.target.value)}
+            />
+          </div>
+        </div>
         <label className="field-group">
           <span>Tags</span>
           <input
@@ -108,6 +132,24 @@ function DentistFilters({
             placeholder="Tag contains..."
             value={filters.tags}
             onChange={(event) => onFilterChange('tags', event.target.value)}
+          />
+        </label>
+        <label className="field-group">
+          <span>Import source</span>
+          <input
+            type="search"
+            placeholder="Import source contains..."
+            value={filters.importSource}
+            onChange={(event) => onFilterChange('importSource', event.target.value)}
+          />
+        </label>
+        <label className="field-group">
+          <span>Import batch ID</span>
+          <input
+            type="search"
+            placeholder="Exact batch ID"
+            value={filters.importBatchId}
+            onChange={(event) => onFilterChange('importBatchId', event.target.value)}
           />
         </label>
       </div>

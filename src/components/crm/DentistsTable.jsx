@@ -11,6 +11,7 @@ const columns = [
   { key: 'owner_status', label: 'Owner Status' },
   { key: 'contact_status', label: 'Contact Status' },
   { key: 'next_follow_up_date', label: 'Next Follow Up' },
+  { key: 'lead_score', label: 'Lead Score' },
   { key: 'created_at', label: 'Created Date' },
 ]
 
@@ -23,6 +24,7 @@ function DentistsTable({
   totalPages,
   pageSize,
   totalCount,
+  onPageSizeChange,
   onSelectRow,
   onSelectAll,
   onSort,
@@ -37,7 +39,7 @@ function DentistsTable({
         <div>
           <h2>Lead workspace</h2>
           <p>
-            Page {page} of {Math.max(totalPages, 1)} with {pageSize} rows per page
+            Page {page} of {Math.max(totalPages, 1)}
           </p>
         </div>
         <div className="table-meta">{selectedIds.length} selected</div>
@@ -89,6 +91,7 @@ function DentistsTable({
                 <td>{dentist.owner_status || '—'}</td>
                 <td>{dentist.contact_status || '—'}</td>
                 <td>{formatDate(dentist.next_follow_up_date)}</td>
+                <td>{dentist.lead_score ?? 0}</td>
                 <td>{formatDate(dentist.created_at)}</td>
               </tr>
             ))}
@@ -98,6 +101,16 @@ function DentistsTable({
 
       <div className="table-footer">
         <span>{totalCount.toLocaleString()} total results</span>
+        <label className="page-size-control">
+          <span>Rows</span>
+          <select value={pageSize} onChange={(event) => onPageSizeChange(event.target.value)}>
+            {[25, 50, 100, 200].map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="pagination">
           <button type="button" className="icon-button" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
             <ChevronLeft size={16} />
