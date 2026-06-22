@@ -1,5 +1,11 @@
-import { BarChart3, Bookmark, Building2, Filter, LayoutList, Upload } from 'lucide-react'
-import { navItems, savedViews } from '../../utils/constants.js'
+import { BarChart3, Database, Filter, LayoutList, Upload } from 'lucide-react'
+import { navItems } from '../../utils/constants.js'
+
+const territoryFilters = [
+  { label: 'New York', viewId: 'ny-dentists' },
+  { label: 'New Jersey', viewId: 'nj-dentists' },
+  { label: 'Connecticut', viewId: 'ct-dentists' },
+]
 
 function Sidebar({ currentPath, activeSavedView, onNavigate }) {
   return (
@@ -17,6 +23,7 @@ function Sidebar({ currentPath, activeSavedView, onNavigate }) {
           const iconMap = {
             dashboard: BarChart3,
             leads: LayoutList,
+            database: Database,
             import: Upload,
           }
           const Icon = iconMap[item.icon] || LayoutList
@@ -41,42 +48,14 @@ function Sidebar({ currentPath, activeSavedView, onNavigate }) {
           <span>Territory</span>
         </div>
         <div className="sidebar-pills">
-          <span>New York</span>
-          <span>New Jersey</span>
-          <span>Connecticut</span>
-        </div>
-      </section>
-
-      <section className="sidebar-section">
-        <div className="section-title">
-          <Building2 size={16} />
-          <span>Focus specialties</span>
-        </div>
-        <ul className="sidebar-list">
-          <li>General Dentist</li>
-          <li>Orthodontist</li>
-          <li>Oral Surgeon</li>
-          <li>Pediatric Dentist</li>
-          <li>Periodontist</li>
-          <li>Endodontist</li>
-        </ul>
-      </section>
-
-      <section className="sidebar-section">
-        <div className="section-title">
-          <Bookmark size={16} />
-          <span>Saved views</span>
-        </div>
-        <div className="saved-views">
-          {savedViews.map((view) => (
+          {territoryFilters.map((territory) => (
             <button
-              key={view.id}
+              key={territory.viewId}
               type="button"
-              className={`saved-view ${activeSavedView?.id === view.id ? 'active' : ''}`}
-              onClick={() => onNavigate(`/leads?view=${view.id}`)}
+              className={activeSavedView?.id === territory.viewId ? 'active' : ''}
+              onClick={() => onNavigate(`/leads?view=${territory.viewId}`)}
             >
-              <span>{view.label}</span>
-              <small>{view.description}</small>
+              {territory.label}
             </button>
           ))}
         </div>

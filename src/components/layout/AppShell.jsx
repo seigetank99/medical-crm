@@ -11,7 +11,13 @@ function AppShell({ children, currentPath, activeSavedView, onNavigate, themeTog
   const { session, signOut } = useAuth()
   const isLogin = location.pathname === '/login'
   const pageTitle =
-    currentPath === '/dashboard' ? 'Pipeline dashboard' : currentPath === '/import' ? 'CSV import' : 'Dental leads'
+    currentPath === '/dashboard'
+      ? 'Pipeline dashboard'
+      : currentPath === '/import'
+        ? 'CSV import'
+        : currentPath === '/database'
+          ? 'Database viewer'
+          : 'Dental leads'
 
   if (isLogin) return children
 

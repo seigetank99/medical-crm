@@ -46,7 +46,14 @@ update public.dentists set specialty = 'Endodontist' where specialty = 'Endodont
 alter table public.dentists
 add column if not exists lead_score int default 0,
 add column if not exists last_contact_date date,
-add column if not exists follow_up_priority text default 'Medium';
+add column if not exists follow_up_priority text default 'Medium',
+add column if not exists taxonomy_code text,
+add column if not exists source_confidence int default 0,
+add column if not exists osm_id text,
+add column if not exists google_place_id text,
+add column if not exists data_enriched_at timestamptz,
+add column if not exists enrichment_status text,
+add column if not exists enrichment_error text;
 
 alter table public.dentists
 drop constraint if exists valid_follow_up_priority;
@@ -147,6 +154,42 @@ create table if not exists public.import_batches (
 create index if not exists import_batches_batch_id_idx
 on public.import_batches (batch_id);
 
+create table if not exists public.enrichment_queue (
+  id bigint generated always as identity primary key,
+  dentist_id bigint not null references public.dentists(id) on delete cascade,
+  job_type text not null,
+  status text not null default 'pending',
+  attempts int not null default 0,
+  last_error text,
+  scheduled_for timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.enrichment_queue
+drop constraint if exists valid_enrichment_job_type;
+
+alter table public.enrichment_queue
+add constraint valid_enrichment_job_type
+check (job_type in (
+  'osm_enrichment',
+  'google_places_enrichment',
+  'lead_scoring'
+));
+
+alter table public.enrichment_queue
+drop constraint if exists valid_enrichment_status;
+
+alter table public.enrichment_queue
+add constraint valid_enrichment_status
+check (status in (
+  'pending',
+  'processing',
+  'completed',
+  'failed'
+));
+
+create index if not exists dentists_npi_number_idx on public.dentists (npi_number);
 create index if not exists dentists_state_idx on public.dentists (state);
 create index if not exists dentists_specialty_idx on public.dentists (specialty);
 create index if not exists dentists_contact_status_idx on public.dentists (contact_status);
@@ -155,6 +198,13 @@ create index if not exists dentists_graduation_year_idx on public.dentists (grad
 create index if not exists dentists_next_follow_up_date_idx on public.dentists (next_follow_up_date);
 create index if not exists dentists_lead_score_idx on public.dentists (lead_score);
 create index if not exists dentists_import_batch_id_idx on public.dentists (import_batch_id);
+create index if not exists dentists_google_place_id_idx on public.dentists (google_place_id);
+create index if not exists dentists_osm_id_idx on public.dentists (osm_id);
+create index if not exists dentists_enrichment_status_idx on public.dentists (enrichment_status);
+create index if not exists enrichment_queue_status_scheduled_for_idx
+on public.enrichment_queue (status, scheduled_for);
+create index if not exists enrichment_queue_dentist_id_idx
+on public.enrichment_queue (dentist_id);
 
 create or replace function public.set_updated_at()
 returns trigger as $$
@@ -178,10 +228,18 @@ before update on public.crm_tasks
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_enrichment_queue_updated_at on public.enrichment_queue;
+
+create trigger set_enrichment_queue_updated_at
+before update on public.enrichment_queue
+for each row
+execute function public.set_updated_at();
+
 alter table public.dentists enable row level security;
 alter table public.contact_notes enable row level security;
 alter table public.crm_tasks enable row level security;
 alter table public.import_batches enable row level security;
+alter table public.enrichment_queue enable row level security;
 
 drop policy if exists "Authenticated users can read dentists" on public.dentists;
 drop policy if exists "Authenticated users can insert dentists" on public.dentists;
@@ -256,6 +314,15 @@ drop policy if exists "Authenticated users can manage import batches" on public.
 
 create policy "Authenticated users can manage import batches"
 on public.import_batches
+for all
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Authenticated users can manage enrichment queue" on public.enrichment_queue;
+
+create policy "Authenticated users can manage enrichment queue"
+on public.enrichment_queue
 for all
 to authenticated
 using (true)

@@ -7,6 +7,7 @@ const baseColumns = `
   credentials,
   specialty,
   npi_number,
+  taxonomy_code,
   graduation_year,
   estimated_age_range,
   years_in_practice,
@@ -25,6 +26,7 @@ const baseColumns = `
   google_rating,
   google_review_count,
   lead_score,
+  source_confidence,
   contact_status,
   lead_source,
   notes,
@@ -34,6 +36,11 @@ const baseColumns = `
   tags,
   import_source,
   import_batch_id,
+  osm_id,
+  google_place_id,
+  data_enriched_at,
+  enrichment_status,
+  enrichment_error,
   created_at,
   updated_at
 `
@@ -325,6 +332,99 @@ export async function getRecentImportBatches(limit = 10) {
   }
 }
 
+export async function getPipelineStatus() {
+  try {
+    const today = todayIso()
+    const weekAgo = new Date()
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    const weekAgoIso = weekAgo.toISOString()
+
+    const [
+      lastImport,
+      importedToday,
+      pendingJobs,
+      failedJobs,
+      enrichedToday,
+      highScoreThisWeek,
+      queueRows,
+    ] = await Promise.all([
+      supabase
+        .from('import_batches')
+        .select('id, batch_id, import_source, successful_rows, failed_rows, duplicate_rows, created_at')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('dentists')
+        .select('id', { count: 'exact', head: true })
+        .eq('import_source', 'NPI Registry')
+        .gte('created_at', today),
+      supabase.from('enrichment_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('enrichment_queue').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
+      supabase.from('dentists').select('id', { count: 'exact', head: true }).gte('data_enriched_at', today),
+      supabase.from('dentists').select('id', { count: 'exact', head: true }).gte('lead_score', 25).gte('created_at', weekAgoIso),
+      supabase
+        .from('enrichment_queue')
+        .select('id, dentist_id, job_type, status, attempts, last_error, scheduled_for, updated_at')
+        .order('scheduled_for', { ascending: true })
+        .limit(25),
+    ])
+
+    const resultError = [lastImport, importedToday, pendingJobs, failedJobs, enrichedToday, highScoreThisWeek, queueRows].find(
+      (result) => result.error,
+    )?.error
+    if (resultError) throw resultError
+
+    return {
+      data: {
+        lastImport: lastImport.data?.[0] || null,
+        importedToday: importedToday.count || 0,
+        pendingJobs: pendingJobs.count || 0,
+        failedJobs: failedJobs.count || 0,
+        enrichedToday: enrichedToday.count || 0,
+        highScoreThisWeek: highScoreThisWeek.count || 0,
+        queueRows: queueRows.data || [],
+      },
+      error: '',
+    }
+  } catch (error) {
+    return { data: null, error: error.message || 'Failed to load pipeline status.' }
+  }
+}
+
+export async function runNpiImport() {
+  return invokePipelineFunction('import-npi-dentists')
+}
+
+export async function processEnrichmentQueue(retryFailed = false) {
+  return invokePipelineFunction('process-enrichment-queue', { retryFailed })
+}
+
+export async function enrichSelectedDentist(dentistId, includeGooglePlaces = false) {
+  const osmResult = await invokePipelineFunction('enrich-osm-dentists', { dentist_id: dentistId })
+  if (osmResult.error || !includeGooglePlaces) return osmResult
+
+  const googleResult = await invokePipelineFunction('enrich-google-places', { dentist_id: dentistId })
+  if (googleResult.error) return googleResult
+
+  return {
+    data: {
+      osm: osmResult.data,
+      google: googleResult.data,
+    },
+    error: '',
+  }
+}
+
+async function invokePipelineFunction(functionName, body = {}) {
+  try {
+    const { data, error } = await supabase.functions.invoke(functionName, { body })
+    if (error) throw error
+    return { data, error: '' }
+  } catch (error) {
+    return { data: null, error: error.message || `Failed to invoke ${functionName}.` }
+  }
+}
+
 export async function findDuplicateDentists({ npiNumbers, emails, phones, names, practices }) {
   try {
     const duplicateNpis = new Set()
@@ -401,22 +501,28 @@ export async function getDashboardMetrics() {
 
     const [
       totalLeads,
-      generalDentists,
-      orthodontists,
-      oralSurgeons,
-      pediatricDentists,
-      periodontists,
-      endodontists,
       newLeads,
+      attemptedLeads,
+      contactedLeads,
       activeProspects,
       proposalSent,
       clients,
+      nurtureLeads,
+      unqualifiedLeads,
+      lostLeads,
       overdueFollowUps,
       followUpsDueToday,
       followUpsThisWeek,
       highScoreLeads,
       upcomingTasks,
       overdueTasks,
+      openTasks,
+      missingEmail,
+      missingPhone,
+      missingWebsite,
+      missingFollowUp,
+      noLastContact,
+      ownerLeads,
       topLeads,
       upcomingFollowUps,
       overdueFollowUpRows,
@@ -425,22 +531,28 @@ export async function getDashboardMetrics() {
       upcomingTaskRows,
     ] = await Promise.all([
       countByFilter('dentists'),
-      countByFilter('dentists', (query) => query.eq('specialty', 'General Dentist')),
-      countByFilter('dentists', (query) => query.eq('specialty', 'Orthodontist')),
-      countByFilter('dentists', (query) => query.eq('specialty', 'Oral Surgeon')),
-      countByFilter('dentists', (query) => query.eq('specialty', 'Pediatric Dentist')),
-      countByFilter('dentists', (query) => query.eq('specialty', 'Periodontist')),
-      countByFilter('dentists', (query) => query.eq('specialty', 'Endodontist')),
       countByFilter('dentists', (query) => query.eq('contact_status', 'New')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Attempted')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Contacted')),
       countByFilter('dentists', (query) => query.eq('contact_status', 'Active Prospect')),
       countByFilter('dentists', (query) => query.eq('contact_status', 'Proposal Sent')),
       countByFilter('dentists', (query) => query.eq('contact_status', 'Client')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Nurture')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Unqualified')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Lost')),
       countByFilter('dentists', (query) => query.not('next_follow_up_date', 'is', null).lt('next_follow_up_date', today)),
       countByFilter('dentists', (query) => query.eq('next_follow_up_date', today)),
       countByFilter('dentists', (query) => query.gte('next_follow_up_date', today).lte('next_follow_up_date', weekEnd)),
       countByFilter('dentists', (query) => query.gte('lead_score', 25)),
       countByFilter('crm_tasks', (query) => query.neq('status', 'Completed').gte('due_date', today).lte('due_date', weekEnd)),
       countByFilter('crm_tasks', (query) => query.neq('status', 'Completed').lt('due_date', today)),
+      countByFilter('crm_tasks', (query) => query.neq('status', 'Completed')),
+      countByFilter('dentists', (query) => query.is('email', null)),
+      countByFilter('dentists', (query) => query.is('phone', null)),
+      countByFilter('dentists', (query) => query.is('website', null)),
+      countByFilter('dentists', (query) => query.is('next_follow_up_date', null)),
+      countByFilter('dentists', (query) => query.is('last_contact_date', null)),
+      countByFilter('dentists', (query) => query.in('owner_status', ['Owner', 'Partner'])),
       supabase.from('dentists').select(baseColumns).order('lead_score', { ascending: false }).limit(10),
       supabase.from('dentists').select(baseColumns).gte('next_follow_up_date', today).order('next_follow_up_date').limit(10),
       supabase.from('dentists').select(baseColumns).lt('next_follow_up_date', today).order('next_follow_up_date').limit(10),
@@ -469,22 +581,28 @@ export async function getDashboardMetrics() {
     return {
       data: {
         totalLeads,
-        generalDentists,
-        orthodontists,
-        oralSurgeons,
-        pediatricDentists,
-        periodontists,
-        endodontists,
         newLeads,
+        attemptedLeads,
+        contactedLeads,
         activeProspects,
         proposalSent,
         clients,
+        nurtureLeads,
+        unqualifiedLeads,
+        lostLeads,
         overdueFollowUps,
         followUpsDueToday,
         followUpsThisWeek,
         highScoreLeads,
         upcomingTasks,
         overdueTasks,
+        openTasks,
+        missingEmail,
+        missingPhone,
+        missingWebsite,
+        missingFollowUp,
+        noLastContact,
+        ownerLeads,
         topLeads: topLeads.data || [],
         upcomingFollowUps: upcomingFollowUps.data || [],
         overdueFollowUpRows: overdueFollowUpRows.data || [],

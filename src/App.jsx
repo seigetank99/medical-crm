@@ -4,6 +4,7 @@ import { Moon, Sun } from 'lucide-react'
 import AppShell from './components/layout/AppShell.jsx'
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import DatabasePage from './pages/DatabasePage.jsx'
 import ImportPage from './pages/ImportPage.jsx'
 import LeadsPage from './pages/LeadsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
@@ -53,6 +54,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
+        <Route path="/database" element={<ProtectedRoute><DatabasePage /></ProtectedRoute>} />
         <Route path="/import" element={<ProtectedRoute><ImportPage /></ProtectedRoute>} />
       </Routes>
     </AppShell>

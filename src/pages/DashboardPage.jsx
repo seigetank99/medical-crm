@@ -6,23 +6,32 @@ import { supabaseConfigError } from '../services/supabaseClient.js'
 import { formatDate, formatDoctorName } from '../utils/formatters.js'
 
 const statConfig = [
-  { key: 'totalLeads', label: 'Total Leads', accent: '#0f766e' },
-  { key: 'generalDentists', label: 'General Dentists', accent: '#2563eb' },
-  { key: 'orthodontists', label: 'Orthodontists', accent: '#0f766e' },
-  { key: 'oralSurgeons', label: 'Oral Surgeons', accent: '#2563eb' },
-  { key: 'pediatricDentists', label: 'Pediatric Dentists', accent: '#9333ea' },
-  { key: 'periodontists', label: 'Periodontists', accent: '#ea580c' },
-  { key: 'endodontists', label: 'Endodontists', accent: '#db2777' },
-  { key: 'newLeads', label: 'New Leads', accent: '#64748b' },
-  { key: 'activeProspects', label: 'Active Prospects', accent: '#ca8a04' },
-  { key: 'proposalSent', label: 'Proposal Sent', accent: '#9333ea' },
-  { key: 'clients', label: 'Clients', accent: '#2563eb' },
-  { key: 'overdueFollowUps', label: 'Overdue Follow Ups', accent: '#dc2626' },
-  { key: 'followUpsDueToday', label: 'Due Today', accent: '#ea580c' },
-  { key: 'followUpsThisWeek', label: 'Due This Week', accent: '#0f766e' },
-  { key: 'highScoreLeads', label: 'High Score Leads', accent: '#0f766e' },
-  { key: 'upcomingTasks', label: 'Upcoming Tasks', accent: '#2563eb' },
-  { key: 'overdueTasks', label: 'Overdue Tasks', accent: '#dc2626' },
+  { key: 'totalLeads', label: 'Total Leads', accent: '#0f766e', helper: 'All visible CRM records' },
+  { key: 'ownerLeads', label: 'Owners / Partners', accent: '#2563eb', helper: 'Likely decision makers' },
+  { key: 'highScoreLeads', label: 'High Score Leads', accent: '#0f766e', helper: 'Lead score 25+' },
+  { key: 'overdueFollowUps', label: 'Overdue Follow Ups', accent: '#dc2626', helper: 'Past due touches' },
+  { key: 'openTasks', label: 'Open Tasks', accent: '#9333ea', helper: 'Not completed' },
+  { key: 'clients', label: 'Clients', accent: '#2563eb', helper: 'Closed relationships' },
+]
+
+const pipelineConfig = [
+  ['New', 'newLeads', '#64748b'],
+  ['Attempted', 'attemptedLeads', '#0891b2'],
+  ['Contacted', 'contactedLeads', '#2563eb'],
+  ['Active Prospect', 'activeProspects', '#ca8a04'],
+  ['Proposal Sent', 'proposalSent', '#9333ea'],
+  ['Client', 'clients', '#0f766e'],
+  ['Nurture', 'nurtureLeads', '#7c3aed'],
+  ['Unqualified', 'unqualifiedLeads', '#ea580c'],
+  ['Lost', 'lostLeads', '#dc2626'],
+]
+
+const qualityConfig = [
+  ['Missing email', 'missingEmail'],
+  ['Missing phone', 'missingPhone'],
+  ['Missing website', 'missingWebsite'],
+  ['No follow-up date', 'missingFollowUp'],
+  ['No last contact', 'noLastContact'],
 ]
 
 function DashboardPage() {
@@ -41,17 +50,82 @@ function DashboardPage() {
 
   if (error) return <EmptyState title="Dashboard unavailable" description={error} />
 
+  const pipelineTotal = pipelineConfig.reduce((sum, [, key]) => sum + (metrics[key] || 0), 0)
+
   return (
     <div className="dashboard-page">
       <section className="stats-grid">
         {statConfig.map((card) => (
-          <StatCard key={card.key} label={card.label} value={(metrics[card.key] || 0).toLocaleString()} accent={card.accent} />
+          <StatCard
+            key={card.key}
+            label={card.label}
+            value={(metrics[card.key] || 0).toLocaleString()}
+            accent={card.accent}
+            helper={card.helper}
+          />
         ))}
       </section>
 
-      <section className="dashboard-tables">
+      <section className="dashboard-insight-grid">
+        <article className="panel dashboard-insight-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Pipeline Mix</h2>
+              <p>{pipelineTotal.toLocaleString()} leads with status</p>
+            </div>
+          </div>
+          <div className="pipeline-bars">
+            {pipelineConfig.map(([label, key, accent]) => (
+              <MetricBar
+                key={key}
+                label={label}
+                value={metrics[key] || 0}
+                total={Math.max(pipelineTotal, 1)}
+                accent={accent}
+              />
+            ))}
+          </div>
+        </article>
+
+        <article className="panel dashboard-insight-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Follow-Up Load</h2>
+              <p>Work due now and this week</p>
+            </div>
+          </div>
+          <div className="dashboard-focus-grid">
+            <FocusMetric label="Overdue" value={metrics.overdueFollowUps || 0} tone="danger" />
+            <FocusMetric label="Due Today" value={metrics.followUpsDueToday || 0} />
+            <FocusMetric label="Due This Week" value={metrics.followUpsThisWeek || 0} />
+            <FocusMetric label="Overdue Tasks" value={metrics.overdueTasks || 0} tone="danger" />
+          </div>
+        </article>
+
+        <article className="panel dashboard-insight-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Data Quality</h2>
+              <p>Fields blocking outreach and follow-up</p>
+            </div>
+          </div>
+          <div className="quality-list">
+            {qualityConfig.map(([label, key]) => (
+              <MetricBar
+                key={key}
+                label={label}
+                value={metrics[key] || 0}
+                total={Math.max(metrics.totalLeads || 0, 1)}
+                accent="#dc2626"
+              />
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="dashboard-tables compact">
         <DashboardList
-          title="Top 10 Highest Score Leads"
+          title="Highest Score Leads"
           rows={metrics.topLeads || []}
           renderRow={(row) => (
             <>
@@ -62,7 +136,7 @@ function DashboardPage() {
           )}
         />
         <DashboardList
-          title="Upcoming Follow Ups"
+          title="Upcoming Follow-Ups"
           rows={metrics.upcomingFollowUps || []}
           renderRow={(row) => (
             <>
@@ -73,35 +147,13 @@ function DashboardPage() {
           )}
         />
         <DashboardList
-          title="Overdue Follow Ups"
+          title="Overdue Follow-Ups"
           rows={metrics.overdueFollowUpRows || []}
           renderRow={(row) => (
             <>
               <strong>{formatDoctorName(row)}</strong>
               <span>{row.follow_up_priority || '—'}</span>
               <b>{formatDate(row.next_follow_up_date)}</b>
-            </>
-          )}
-        />
-        <DashboardList
-          title="Recent Contact Notes"
-          rows={metrics.recentContactNotes || []}
-          renderRow={(row) => (
-            <>
-              <strong>{row.contact_method || 'Note'}</strong>
-              <span>{row.note}</span>
-              <b>{formatDate(row.created_at)}</b>
-            </>
-          )}
-        />
-        <DashboardList
-          title="Recent Import Batches"
-          rows={metrics.recentImportBatches || []}
-          renderRow={(row) => (
-            <>
-              <strong>{row.file_name || row.batch_id}</strong>
-              <span>{row.import_source || '—'}</span>
-              <b>{row.successful_rows || 0}/{row.total_rows || 0}</b>
             </>
           )}
         />
@@ -117,6 +169,31 @@ function DashboardPage() {
           )}
         />
       </section>
+    </div>
+  )
+}
+
+function FocusMetric({ label, value, tone }) {
+  return (
+    <div className={`focus-metric ${tone === 'danger' ? 'danger' : ''}`}>
+      <span>{label}</span>
+      <strong>{value.toLocaleString()}</strong>
+    </div>
+  )
+}
+
+function MetricBar({ label, value, total, accent }) {
+  const percentage = total ? Math.round((value / total) * 100) : 0
+
+  return (
+    <div className="metric-bar-row">
+      <div className="metric-bar-label">
+        <span>{label}</span>
+        <b>{value.toLocaleString()}</b>
+      </div>
+      <div className="metric-bar-track">
+        <div className="metric-bar-fill" style={{ width: `${percentage}%`, background: accent }} />
+      </div>
     </div>
   )
 }

@@ -1,12 +1,16 @@
-import { CheckCircle2, FileUp, Upload, XCircle } from 'lucide-react'
+import { CheckCircle2, FileUp, Play, RefreshCw, RotateCcw, Sparkles, Upload, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import EmptyState from '../components/common/EmptyState.jsx'
 import LoadingState from '../components/common/LoadingState.jsx'
 import {
   createDentistRecordsBatch,
   createImportBatch,
+  enrichSelectedDentist,
   findDuplicateDentists,
+  getPipelineStatus,
   getRecentImportBatches,
+  processEnrichmentQueue,
+  runNpiImport,
   updateImportBatch,
 } from '../services/dentistsService.js'
 import { isSupabaseConfigured, supabaseConfigError } from '../services/supabaseClient.js'
@@ -30,18 +34,55 @@ function ImportPage() {
   const [summary, setSummary] = useState(null)
   const [importSource, setImportSource] = useState('CSV Upload')
   const [recentBatches, setRecentBatches] = useState([])
+  const [pipelineStatus, setPipelineStatus] = useState(null)
+  const [pipelineLoading, setPipelineLoading] = useState(true)
+  const [pipelineMessage, setPipelineMessage] = useState('')
+  const [pipelineMessageError, setPipelineMessageError] = useState(false)
+  const [pipelineRunning, setPipelineRunning] = useState('')
+  const [selectedDentistId, setSelectedDentistId] = useState('')
+  const [includeGooglePlaces, setIncludeGooglePlaces] = useState(false)
 
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows])
   const invalidRows = rows.length - validRows.length
 
+  async function loadImportData() {
+    if (!isSupabaseConfigured) return
+    setPipelineLoading(true)
+    const [batchesResult, pipelineResult] = await Promise.all([getRecentImportBatches(), getPipelineStatus()])
+    if (!batchesResult.error) setRecentBatches(batchesResult.data)
+    if (!pipelineResult.error) {
+      setPipelineStatus(pipelineResult.data)
+    } else {
+      setPipelineMessage(pipelineResult.error)
+      setPipelineMessageError(true)
+    }
+    setPipelineLoading(false)
+  }
+
   useEffect(() => {
-    async function loadBatches() {
+    let mounted = true
+
+    async function loadInitialImportData() {
       if (!isSupabaseConfigured) return
-      const batchesResult = await getRecentImportBatches()
+      setPipelineLoading(true)
+      const [batchesResult, pipelineResult] = await Promise.all([getRecentImportBatches(), getPipelineStatus()])
+      if (!mounted) return
+
       if (!batchesResult.error) setRecentBatches(batchesResult.data)
+      if (!pipelineResult.error) {
+        setPipelineStatus(pipelineResult.data)
+      } else {
+        setPipelineMessage(pipelineResult.error)
+        setPipelineMessageError(true)
+      }
+      setPipelineLoading(false)
     }
 
-    void loadBatches()
+    void loadInitialImportData()
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   const handleFile = async (event) => {
@@ -66,8 +107,7 @@ function ImportPage() {
       }
 
       setRows(annotateDuplicates(mappedRows, duplicateResult.data))
-      const batchesResult = await getRecentImportBatches()
-      if (!batchesResult.error) setRecentBatches(batchesResult.data)
+      await loadImportData()
     } catch (error) {
       setMessage(error.message || 'Unable to parse CSV.')
     } finally {
@@ -116,10 +156,25 @@ function ImportPage() {
       failed_rows: failureCount + invalidRows,
       duplicate_rows: duplicateCount,
     })
-    const batchesResult = await getRecentImportBatches()
-    if (!batchesResult.error) setRecentBatches(batchesResult.data)
+    await loadImportData()
     setSummary({ batchId, successCount, failureCount, skippedCount: invalidRows, duplicateCount, totalRows: rows.length })
     setImporting(false)
+  }
+
+  const handlePipelineAction = async (label, action) => {
+    setPipelineRunning(label)
+    setPipelineMessage('')
+    setPipelineMessageError(false)
+    const result = await action()
+    if (result.error) {
+      setPipelineMessage(result.error)
+      setPipelineMessageError(true)
+    } else {
+      setPipelineMessage(`${label} complete: ${summarizePipelineResult(result.data)}`)
+      setPipelineMessageError(false)
+    }
+    await loadImportData()
+    setPipelineRunning('')
   }
 
   if (!isSupabaseConfigured) {
@@ -133,6 +188,112 @@ function ImportPage() {
 
   return (
     <div className="import-page">
+      <section className="panel import-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Automatic Pipeline Status</h2>
+            <p>NPI import, enrichment queue, and high-value lead automation.</p>
+          </div>
+          <button type="button" className="ghost-button" onClick={loadImportData} disabled={pipelineLoading}>
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+
+        {pipelineLoading ? (
+          <LoadingState label="Loading pipeline status..." />
+        ) : (
+          <div className="pipeline-status-grid">
+            <PipelineMetric label="Last import" value={formatDateTime(pipelineStatus?.lastImport?.created_at)} />
+            <PipelineMetric label="Imported today" value={pipelineStatus?.importedToday || 0} />
+            <PipelineMetric label="Pending jobs" value={pipelineStatus?.pendingJobs || 0} />
+            <PipelineMetric label="Failed jobs" value={pipelineStatus?.failedJobs || 0} />
+            <PipelineMetric label="Enriched today" value={pipelineStatus?.enrichedToday || 0} />
+            <PipelineMetric label="High-score this week" value={pipelineStatus?.highScoreThisWeek || 0} />
+          </div>
+        )}
+
+        {pipelineMessage ? <div className={`notice ${pipelineMessageError ? 'error' : ''}`}>{pipelineMessage}</div> : null}
+      </section>
+
+      <section className="pipeline-actions-grid">
+        <article className="panel import-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Run NPI Import Now</h2>
+              <p>Imports dental providers from the official NPI Registry for NY, NJ, and CT.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => handlePipelineAction('NPI import', runNpiImport)}
+            disabled={Boolean(pipelineRunning)}
+          >
+            <Play size={16} />
+            {pipelineRunning === 'NPI import' ? 'Running...' : 'Run NPI Import Now'}
+          </button>
+        </article>
+
+        <article className="panel import-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Process Queue Now</h2>
+              <p>Runs pending enrichment and lead scoring jobs due now.</p>
+            </div>
+          </div>
+          <div className="toolbar-group">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => handlePipelineAction('Queue processing', () => processEnrichmentQueue(false))}
+              disabled={Boolean(pipelineRunning)}
+            >
+              <RefreshCw size={16} />
+              {pipelineRunning === 'Queue processing' ? 'Processing...' : 'Process Enrichment Queue Now'}
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => handlePipelineAction('Retry failed jobs', () => processEnrichmentQueue(true))}
+              disabled={Boolean(pipelineRunning)}
+            >
+              <RotateCcw size={16} />
+              Retry Failed Jobs
+            </button>
+          </div>
+        </article>
+
+        <article className="panel import-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Enrich Selected Lead</h2>
+              <p>Run enrichment for one dentist ID.</p>
+            </div>
+          </div>
+          <label className="field-group">
+            <span>Dentist ID</span>
+            <input value={selectedDentistId} onChange={(event) => setSelectedDentistId(event.target.value)} placeholder="Example: 123" />
+          </label>
+          <label className="checkbox-field">
+            <input type="checkbox" checked={includeGooglePlaces} onChange={(event) => setIncludeGooglePlaces(event.target.checked)} />
+            <span>Include Google Places enrichment</span>
+          </label>
+          {includeGooglePlaces ? (
+            <div className="notice">Google Places API calls may cost money. The API key stays server-side in Supabase secrets.</div>
+          ) : null}
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => handlePipelineAction('Selected dentist enrichment', () => enrichSelectedDentist(Number(selectedDentistId), includeGooglePlaces))}
+            disabled={Boolean(pipelineRunning) || !selectedDentistId}
+          >
+            <Sparkles size={16} />
+            {pipelineRunning === 'Selected dentist enrichment' ? 'Enriching...' : 'Enrich Selected Dentist'}
+          </button>
+        </article>
+      </section>
+
       <section className="panel import-panel">
         <div className="panel-heading">
           <div>
@@ -259,6 +420,54 @@ function ImportPage() {
           <EmptyState title="No import batches yet" description="Completed imports will appear here." />
         )}
       </section>
+
+      <section className="panel import-preview">
+        <div className="panel-heading">
+          <div>
+            <h2>Queue Status</h2>
+            <p>Most recent enrichment and scoring jobs.</p>
+          </div>
+        </div>
+        {pipelineStatus?.queueRows?.length ? (
+          <div className="table-wrap">
+            <table className="crm-table import-table">
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Dentist ID</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>Scheduled</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipelineStatus.queueRows.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.job_type}</td>
+                    <td>{job.dentist_id}</td>
+                    <td>{job.status}</td>
+                    <td>{job.attempts || 0}</td>
+                    <td>{formatDateTime(job.scheduled_for)}</td>
+                    <td>{job.last_error || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No queue jobs" description="Queued enrichment and scoring jobs will appear here." />
+        )}
+      </section>
+    </div>
+  )
+}
+
+function PipelineMetric({ label, value }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{typeof value === 'number' ? value.toLocaleString() : value}</strong>
     </div>
   )
 }
@@ -271,6 +480,20 @@ function SummaryItem({ icon, label, value }) {
       <strong>{value.toLocaleString()}</strong>
     </div>
   )
+}
+
+function formatDateTime(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
+}
+
+function summarizePipelineResult(data) {
+  if (!data || typeof data !== 'object') return 'done'
+  return Object.entries(data)
+    .filter(([, value]) => typeof value === 'number' || typeof value === 'string')
+    .slice(0, 6)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ')
 }
 
 export default ImportPage

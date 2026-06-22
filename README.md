@@ -7,6 +7,7 @@ OmniHealth is a React + Vite CRM for accounting and advisory teams managing dent
 - React + Vite
 - JavaScript
 - Supabase Auth + Postgres
+- Supabase Edge Functions
 - PapaParse for CSV import/export
 - Vercel-ready static deployment
 
@@ -18,6 +19,8 @@ OmniHealth is a React + Vite CRM for accounting and advisory teams managing dent
 - Contact notes with cascade delete from dentists
 - CRM tasks per dentist
 - CSV import with validation, preview, duplicate detection, import batch tracking, and batched inserts
+- Automatic NPI Registry import for NY, NJ, and CT dental leads
+- Enrichment queue for lead scoring, OpenStreetMap enrichment, and selected Google Places enrichment
 - Search, filters, sorting, pagination, saved views, and CSV export
 - Lead scoring on create/edit/import
 - Follow-up tracking and dashboard work queues
@@ -57,9 +60,11 @@ The SQL file includes:
 - standardized `contact_status` values
 - singular dental specialty migration
 - `lead_score`, `last_contact_date`, and `follow_up_priority`
+- enrichment fields: `taxonomy_code`, `source_confidence`, `osm_id`, `google_place_id`, `data_enriched_at`, `enrichment_status`, and `enrichment_error`
 - rebuilt `contact_notes` with `dentist_id bigint`
 - `crm_tasks`
 - `import_batches`
+- `enrichment_queue`
 - indexes
 - `updated_at` triggers
 - RLS policies for authenticated users
@@ -134,6 +139,83 @@ Import normalizes:
 - numeric year/rating/review fields
 - lead score
 - import source and import batch ID
+
+## Automatic Data Pipeline
+
+Open `/import` to run and monitor the automatic data pipeline.
+
+The pipeline includes these Supabase Edge Functions:
+
+```text
+import-npi-dentists
+enrich-osm-dentists
+enrich-google-places
+process-enrichment-queue
+```
+
+`import-npi-dentists` uses the official NPI Registry API to import dentists from NY, NJ, and CT for these specialties:
+
+```text
+General Dentist
+Orthodontist
+Oral Surgeon
+Pediatric Dentist
+Periodontist
+Endodontist
+```
+
+After import, the function creates `enrichment_queue` jobs:
+
+- `lead_scoring` for all imported or updated records
+- `osm_enrichment` for records missing website or practice information
+- `google_places_enrichment` only for high-value records with `lead_score >= 20` that are missing website, rating, or review count
+
+`enrich-osm-dentists` uses Overpass/OpenStreetMap data and only fills missing website, phone, address, and practice fields when match confidence is high.
+
+`enrich-google-places` uses the official Google Places API. The `GOOGLE_PLACES_API_KEY` must stay in Supabase secrets and must never be added to Vite environment variables. Google Places API calls may cost money, so the frontend shows a warning before manual Google enrichment.
+
+`process-enrichment-queue` processes pending jobs due now, retries failed jobs up to three attempts, and returns processing totals.
+
+### Edge Function Deployment
+
+Install and authenticate the Supabase CLI, then deploy:
+
+```bash
+supabase functions deploy import-npi-dentists
+supabase functions deploy enrich-osm-dentists
+supabase functions deploy enrich-google-places
+supabase functions deploy process-enrichment-queue
+```
+
+Required Supabase function secrets:
+
+```bash
+supabase secrets set SUPABASE_URL=https://PROJECT_REF.supabase.co
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+supabase secrets set GOOGLE_PLACES_API_KEY=your-google-places-api-key
+```
+
+Frontend environment variables remain limited to:
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+Never commit a service role key or Google Places key.
+
+### Scheduled Jobs
+
+Use Supabase scheduled functions or `pg_cron`/external cron to call the deployed Edge Functions.
+
+Desired schedule:
+
+```text
+Daily:  import-npi-dentists
+Hourly: process-enrichment-queue
+```
+
+Cron requests should use a server-side bearer token such as `SUPABASE_SERVICE_ROLE_KEY`. Manual frontend requests require an authenticated Supabase user session.
 
 ## Lead Scoring
 
