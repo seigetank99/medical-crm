@@ -48,32 +48,30 @@ Deno.serve(async (req) => {
   if (batchError) return errorResponse(batchError.message, 500)
 
   for (const state of states) {
-    for (const taxonomy of taxonomyQueries.filter((item) => specialties.includes(item.specialty))) {
-      for (let page = 0; page < maxPages; page += 1) {
-        const skip = page * limit
-        const url = new URL(npiEndpoint)
-        url.searchParams.set('version', '2.1')
-        url.searchParams.set('state', state)
-        url.searchParams.set('taxonomy_description', taxonomy.query)
-        url.searchParams.set('limit', String(limit))
-        url.searchParams.set('skip', String(skip))
+    for (let page = 0; page < maxPages; page += 1) {
+      const skip = page * limit
+      const url = new URL(npiEndpoint)
+      url.searchParams.set('version', '2.1')
+      url.searchParams.set('state', state)
+      url.searchParams.set('taxonomy_description', 'Dentist')
+      url.searchParams.set('limit', String(limit))
+      url.searchParams.set('skip', String(skip))
 
-        try {
-          const response = await fetch(url)
-          if (!response.ok) throw new Error(`NPI Registry returned ${response.status}.`)
-          const payload = await response.json()
-          const providers = payload.results || []
-          summary.fetched += providers.length
+      try {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`NPI Registry returned ${response.status}.`)
+        const payload = await response.json()
+        const providers = payload.results || []
+        summary.fetched += providers.length
 
-          for (const provider of providers) {
-            await importProvider(supabase, provider, taxonomy.specialty, batchId, summary)
-          }
-
-          if (providers.length < limit) break
-        } catch (error) {
-          summary.failed += 1
-          summary.errors.push(`${state} ${taxonomy.specialty}: ${error.message}`)
+        for (const provider of providers) {
+          await importProvider(supabase, provider, specialties, batchId, summary)
         }
+
+        if (providers.length < limit) break
+      } catch (error) {
+        summary.failed += 1
+        summary.errors.push(`${state} Dentist: ${error.message}`)
       }
     }
   }
@@ -92,14 +90,19 @@ Deno.serve(async (req) => {
   return jsonResponse(summary)
 })
 
-async function importProvider(supabase, provider, fallbackSpecialty, batchId, summary) {
+async function importProvider(supabase, provider, specialties, batchId, summary) {
   if (!isSupportedDentalProvider(provider)) {
     summary.skipped += 1
     return
   }
 
-  const payload = normalizeNpiProvider(provider, fallbackSpecialty)
+  const payload = normalizeNpiProvider(provider, 'General Dentist')
   if (!payload.npi_number) {
+    summary.skipped += 1
+    return
+  }
+
+  if (!specialties.includes(payload.specialty)) {
     summary.skipped += 1
     return
   }
