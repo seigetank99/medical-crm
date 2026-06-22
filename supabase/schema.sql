@@ -190,6 +190,9 @@ check (status in (
 ));
 
 create index if not exists dentists_npi_number_idx on public.dentists (npi_number);
+create unique index if not exists dentists_npi_number_unique_idx
+on public.dentists (npi_number)
+where npi_number is not null;
 create index if not exists dentists_state_idx on public.dentists (state);
 create index if not exists dentists_specialty_idx on public.dentists (specialty);
 create index if not exists dentists_contact_status_idx on public.dentists (contact_status);

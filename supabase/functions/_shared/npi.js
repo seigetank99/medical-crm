@@ -15,16 +15,18 @@ export function normalizeNpiProvider(provider, fallbackSpecialty) {
   const basic = provider.basic || {}
   const taxonomy = chooseTaxonomy(provider.taxonomies || [], fallbackSpecialty)
   const address = choosePracticeAddress(provider.addresses || [])
+  const firstName = cleanText(basic.first_name || basic.authorized_official_first_name)
+  const lastName = cleanText(basic.last_name || basic.authorized_official_last_name)
 
   return {
     npi_number: provider.number ? String(provider.number) : null,
     taxonomy_code: taxonomy?.code || null,
-    first_name: cleanText(basic.first_name),
-    last_name: cleanText(basic.last_name),
-    credentials: cleanText(basic.credential),
+    first_name: firstName,
+    last_name: lastName,
+    credentials: cleanText(basic.credential || basic.authorized_official_credential),
     specialty: taxonomy?.specialty || fallbackSpecialty,
-    practice_name: cleanText(basic.organization_name || basic.name || address?.organization_name),
-    phone: normalizePhone(address?.telephone_number),
+    practice_name: cleanText(basic.organization_name || basic.name || address?.organization_name || buildProviderName(firstName, lastName)),
+    phone: normalizePhone(address?.telephone_number || basic.authorized_official_telephone_number),
     address: cleanText([address?.address_1, address?.address_2].filter(Boolean).join(' ')),
     city: cleanText(address?.city),
     state: cleanText(address?.state),
@@ -33,6 +35,10 @@ export function normalizeNpiProvider(provider, fallbackSpecialty) {
     source_confidence: 90,
     contact_status: 'New',
   }
+}
+
+export function isSupportedDentalProvider(provider) {
+  return (provider.taxonomies || []).some((taxonomy) => taxonomyByCode.has(taxonomy.code))
 }
 
 function chooseTaxonomy(taxonomies, fallbackSpecialty) {
@@ -65,4 +71,8 @@ function normalizePhone(value) {
   if (!digits) return null
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
   return digits
+}
+
+function buildProviderName(firstName, lastName) {
+  return [firstName, lastName].filter(Boolean).join(' ') || null
 }

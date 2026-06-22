@@ -1,5 +1,5 @@
 import { corsHeaders, createServiceClient, errorResponse, jsonResponse, readJson, requireAuthorizedRequest } from '../_shared/http.js'
-import { normalizeNpiProvider, supportedStates, taxonomyQueries } from '../_shared/npi.js'
+import { isSupportedDentalProvider, normalizeNpiProvider, supportedStates, taxonomyQueries } from '../_shared/npi.js'
 import { enqueuePostImportJobs } from '../_shared/queue.js'
 import { calculateLeadScore } from '../_shared/scoring.js'
 
@@ -93,6 +93,11 @@ Deno.serve(async (req) => {
 })
 
 async function importProvider(supabase, provider, fallbackSpecialty, batchId, summary) {
+  if (!isSupportedDentalProvider(provider)) {
+    summary.skipped += 1
+    return
+  }
+
   const payload = normalizeNpiProvider(provider, fallbackSpecialty)
   if (!payload.npi_number) {
     summary.skipped += 1
