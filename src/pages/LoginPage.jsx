@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import EmptyState from '../components/common/EmptyState.jsx'
 import { useAuth } from '../hooks/useAuth.js'
-import { isSupabaseConfigured } from '../services/supabaseClient.js'
+import { isSupabaseConfigured, supabaseConfigError } from '../services/supabaseClient.js'
 
 function LoginPage() {
   const { session, signIn, error } = useAuth()
@@ -19,7 +19,7 @@ function LoginPage() {
       <div className="login-page">
         <EmptyState
           title="Supabase connection required"
-          description="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before signing in."
+          description={supabaseConfigError}
         />
       </div>
     )

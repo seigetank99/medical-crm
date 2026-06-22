@@ -9,7 +9,7 @@ import {
   getRecentImportBatches,
   updateImportBatch,
 } from '../services/dentistsService.js'
-import { isSupabaseConfigured } from '../services/supabaseClient.js'
+import { isSupabaseConfigured, supabaseConfigError } from '../services/supabaseClient.js'
 import {
   annotateDuplicates,
   chunkRows,
@@ -126,7 +126,7 @@ function ImportPage() {
     return (
       <EmptyState
         title="Supabase connection required"
-        description="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before importing CSV data."
+        description={supabaseConfigError}
       />
     )
   }

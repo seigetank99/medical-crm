@@ -1,5 +1,5 @@
 -- OmniHealth / Medical CRM Supabase setup and migration script.
--- Review before running in production. The contact_notes rebuild below drops that table.
+-- Review before running in production.
 
 begin;
 
@@ -60,11 +60,9 @@ check (follow_up_priority in (
   'Urgent'
 ));
 
--- Preferred early-stage fix because dentists.id is bigint.
--- If you already have contact notes to preserve, migrate them into a temp table before this drop.
-drop table if exists public.contact_notes;
-
-create table public.contact_notes (
+-- dentists.id is bigint, so contact_notes.dentist_id must also be bigint.
+-- This creates the correct table for new projects without destroying existing notes.
+create table if not exists public.contact_notes (
   id bigint generated always as identity primary key,
   dentist_id bigint not null references public.dentists(id) on delete cascade,
   note text not null,
@@ -75,6 +73,21 @@ create table public.contact_notes (
 
 create index if not exists contact_notes_dentist_id_idx
 on public.contact_notes (dentist_id, created_at desc);
+
+do $$
+declare
+  dentist_id_type text;
+begin
+  select data_type into dentist_id_type
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'contact_notes'
+    and column_name = 'dentist_id';
+
+  if dentist_id_type is not null and dentist_id_type <> 'bigint' then
+    raise exception 'contact_notes.dentist_id must be bigint because dentists.id is bigint. If this table is empty, drop and recreate contact_notes with the definition in this file. If it has data, migrate it before changing the type.';
+  end if;
+end $$;
 
 create table if not exists public.crm_tasks (
   id bigint generated always as identity primary key,

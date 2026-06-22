@@ -2,6 +2,7 @@ import EmptyState from '../components/common/EmptyState.jsx'
 import LoadingState from '../components/common/LoadingState.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
+import { supabaseConfigError } from '../services/supabaseClient.js'
 import { formatDate, formatDoctorName } from '../utils/formatters.js'
 
 const statConfig = [
@@ -31,7 +32,7 @@ function DashboardPage() {
     return (
       <EmptyState
         title="Supabase connection required"
-        description="Add your Supabase URL and anon key to start loading dashboard metrics."
+        description={supabaseConfigError}
       />
     )
   }

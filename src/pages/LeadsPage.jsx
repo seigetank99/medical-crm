@@ -8,6 +8,7 @@ import DentistFilters from '../components/crm/DentistFilters.jsx'
 import DentistFormModal from '../components/crm/DentistFormModal.jsx'
 import DentistsTable from '../components/crm/DentistsTable.jsx'
 import { useDentists } from '../hooks/useDentists.js'
+import { supabaseConfigError } from '../services/supabaseClient.js'
 import { savedViews } from '../utils/constants.js'
 import { buildCsv, downloadCsv } from '../utils/csv.js'
 import { blankDentistForm } from '../utils/constants.js'
@@ -110,7 +111,7 @@ function LeadsPage() {
     return (
       <EmptyState
         title="Supabase connection required"
-        description="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then reload the app."
+        description={supabaseConfigError}
       />
     )
   }

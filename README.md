@@ -25,9 +25,15 @@ OmniHealth is a React + Vite CRM for accounting and advisory teams managing dent
 
 ## Local Setup
 
+1. Create a Supabase project.
+2. Run [supabase/schema.sql](./supabase/schema.sql) in the Supabase SQL editor.
+3. Create the first Auth user in Supabase Authentication > Users.
+4. Create a local `.env`.
+5. Install dependencies and start Vite.
+
 ```bash
-npm install
 cp .env.example .env
+npm install
 npm run dev
 ```
 
@@ -38,11 +44,13 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 ```
 
+Use the Supabase anon key only. Never put a service role key in `.env` for this frontend app.
+
 ## Supabase Setup
 
-Run [supabase/schema.sql](/Users/billyyan/Desktop/Medical-CRM/medical-crm/supabase/schema.sql) in the Supabase SQL editor.
+Run [supabase/schema.sql](./supabase/schema.sql) in the Supabase SQL editor.
 
-Important: the script intentionally drops and recreates `public.contact_notes` because this project expects `dentists.id` and `contact_notes.dentist_id` to both be `bigint`. If you already have contact notes to preserve, migrate them before running that section.
+Important: this project expects `dentists.id` and `contact_notes.dentist_id` to both be `bigint`. The setup file creates `contact_notes` correctly for new projects and raises a clear SQL error if an existing `contact_notes.dentist_id` column has the wrong type, such as `uuid`.
 
 The SQL file includes:
 
