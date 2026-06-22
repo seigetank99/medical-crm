@@ -386,8 +386,10 @@ export async function findDuplicateDentists({ npiNumbers, emails, phones, names,
   }
 }
 
-async function countByFilter(builder) {
-  const { count, error } = await builder.select('id', { count: 'exact', head: true })
+async function countByFilter(table, configure = (query) => query) {
+  let query = supabase.from(table).select('id', { count: 'exact', head: true })
+  query = configure(query)
+  const { count, error } = await query
   if (error) throw error
   return count || 0
 }
@@ -422,23 +424,23 @@ export async function getDashboardMetrics() {
       recentImportBatches,
       upcomingTaskRows,
     ] = await Promise.all([
-      countByFilter(supabase.from('dentists')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'General Dentist')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Orthodontist')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Oral Surgeon')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Pediatric Dentist')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Periodontist')),
-      countByFilter(supabase.from('dentists').eq('specialty', 'Endodontist')),
-      countByFilter(supabase.from('dentists').eq('contact_status', 'New')),
-      countByFilter(supabase.from('dentists').eq('contact_status', 'Active Prospect')),
-      countByFilter(supabase.from('dentists').eq('contact_status', 'Proposal Sent')),
-      countByFilter(supabase.from('dentists').eq('contact_status', 'Client')),
-      countByFilter(supabase.from('dentists').not('next_follow_up_date', 'is', null).lt('next_follow_up_date', today)),
-      countByFilter(supabase.from('dentists').eq('next_follow_up_date', today)),
-      countByFilter(supabase.from('dentists').gte('next_follow_up_date', today).lte('next_follow_up_date', weekEnd)),
-      countByFilter(supabase.from('dentists').gte('lead_score', 25)),
-      countByFilter(supabase.from('crm_tasks').neq('status', 'Completed').gte('due_date', today).lte('due_date', weekEnd)),
-      countByFilter(supabase.from('crm_tasks').neq('status', 'Completed').lt('due_date', today)),
+      countByFilter('dentists'),
+      countByFilter('dentists', (query) => query.eq('specialty', 'General Dentist')),
+      countByFilter('dentists', (query) => query.eq('specialty', 'Orthodontist')),
+      countByFilter('dentists', (query) => query.eq('specialty', 'Oral Surgeon')),
+      countByFilter('dentists', (query) => query.eq('specialty', 'Pediatric Dentist')),
+      countByFilter('dentists', (query) => query.eq('specialty', 'Periodontist')),
+      countByFilter('dentists', (query) => query.eq('specialty', 'Endodontist')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'New')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Active Prospect')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Proposal Sent')),
+      countByFilter('dentists', (query) => query.eq('contact_status', 'Client')),
+      countByFilter('dentists', (query) => query.not('next_follow_up_date', 'is', null).lt('next_follow_up_date', today)),
+      countByFilter('dentists', (query) => query.eq('next_follow_up_date', today)),
+      countByFilter('dentists', (query) => query.gte('next_follow_up_date', today).lte('next_follow_up_date', weekEnd)),
+      countByFilter('dentists', (query) => query.gte('lead_score', 25)),
+      countByFilter('crm_tasks', (query) => query.neq('status', 'Completed').gte('due_date', today).lte('due_date', weekEnd)),
+      countByFilter('crm_tasks', (query) => query.neq('status', 'Completed').lt('due_date', today)),
       supabase.from('dentists').select(baseColumns).order('lead_score', { ascending: false }).limit(10),
       supabase.from('dentists').select(baseColumns).gte('next_follow_up_date', today).order('next_follow_up_date').limit(10),
       supabase.from('dentists').select(baseColumns).lt('next_follow_up_date', today).order('next_follow_up_date').limit(10),
