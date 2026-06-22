@@ -40,7 +40,59 @@ const npiImportDepthOptions = [
   { value: 5, label: 'Deep', detail: 'Recommended' },
   { value: 10, label: 'Maximum', detail: 'Largest pull' },
 ]
-const npiTrackedStates = ['NY', 'NJ', 'CT']
+const npiTrackedStates = [
+  'AL',
+  'AK',
+  'AZ',
+  'AR',
+  'CA',
+  'CO',
+  'CT',
+  'DE',
+  'FL',
+  'GA',
+  'HI',
+  'ID',
+  'IL',
+  'IN',
+  'IA',
+  'KS',
+  'KY',
+  'LA',
+  'ME',
+  'MD',
+  'MA',
+  'MI',
+  'MN',
+  'MS',
+  'MO',
+  'MT',
+  'NE',
+  'NV',
+  'NH',
+  'NJ',
+  'NM',
+  'NY',
+  'NC',
+  'ND',
+  'OH',
+  'OK',
+  'OR',
+  'PA',
+  'RI',
+  'SC',
+  'SD',
+  'TN',
+  'TX',
+  'UT',
+  'VT',
+  'VA',
+  'WA',
+  'WV',
+  'WI',
+  'WY',
+]
+const defaultNpiTrackedStates = ['NY', 'NJ', 'CT']
 
 function ImportPage() {
   const [fileName, setFileName] = useState('')
@@ -382,6 +434,18 @@ function ImportPage() {
     setPipelineMessageError(false)
   }
 
+  const setTrackedStates = (states) => {
+    saveNpiFullPull({
+      ...npiFullPull,
+      selectedStates: states,
+      stateIndex: 0,
+      startPage: 0,
+      lastRun: null,
+    })
+    setPipelineMessage(`Tracked pull states set to ${states.length} state${states.length === 1 ? '' : 's'}. Cursor reset to ${states[0]} page 0.`)
+    setPipelineMessageError(false)
+  }
+
   if (!isSupabaseConfigured) {
     return (
       <EmptyState
@@ -545,7 +609,7 @@ function ImportPage() {
           <button
             type="button"
             className="ghost-button"
-            onClick={() => handlePipelineAction('NPI import', () => runNpiImport({ maxPages: npiMaxPages, limit: 200 }))}
+            onClick={() => handlePipelineAction('NPI import', () => runNpiImport({ states: selectedNpiStates, maxPages: npiMaxPages, limit: 200 }))}
             disabled={Boolean(pipelineRunning)}
           >
             <Play size={16} />
@@ -559,6 +623,17 @@ function ImportPage() {
                 {npiFullPull.startPage.toLocaleString()}. Quick pull does not advance this tracker.
               </span>
             </div>
+            <div className="npi-state-tools">
+              <span>{selectedNpiStates.length} states selected</span>
+              <div className="toolbar-group">
+                <button type="button" className="ghost-button" onClick={() => setTrackedStates(defaultNpiTrackedStates)} disabled={Boolean(pipelineRunning)}>
+                  NY/NJ/CT
+                </button>
+                <button type="button" className="ghost-button" onClick={() => setTrackedStates(npiTrackedStates)} disabled={Boolean(pipelineRunning)}>
+                  All 50
+                </button>
+              </div>
+            </div>
             <div className="npi-state-selector">
               {npiTrackedStates.map((state) => (
                 <label key={state} className="checkbox-field">
@@ -566,6 +641,7 @@ function ImportPage() {
                     type="checkbox"
                     checked={selectedNpiStates.includes(state)}
                     onChange={() => handleTrackedStateToggle(state)}
+                    disabled={Boolean(pipelineRunning)}
                   />
                   <span>{state}</span>
                 </label>
@@ -926,13 +1002,13 @@ function loadNpiFullPull() {
       lastRun: stored.lastRun || null,
     }
   } catch {
-    return { selectedStates: npiTrackedStates, stateIndex: 0, startPage: 0, lastRun: null }
+    return { selectedStates: defaultNpiTrackedStates, stateIndex: 0, startPage: 0, lastRun: null }
   }
 }
 
 function getSelectedNpiStates(value) {
   const selected = Array.isArray(value) ? value.filter((state) => npiTrackedStates.includes(state)) : []
-  return selected.length ? selected : npiTrackedStates
+  return selected.length ? selected : defaultNpiTrackedStates
 }
 
 export default ImportPage

@@ -818,10 +818,20 @@
   font-size: 0.9rem;
 }
 
-.npi-state-selector {
+.npi-state-tools {
+  align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.npi-state-selector {
+  display: grid;
   gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .npi-state-selector .checkbox-field {
