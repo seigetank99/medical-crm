@@ -33,6 +33,13 @@ const defaultConnectionForm = {
   notes: '',
 }
 
+const npiImportDepthOptions = [
+  { value: 1, label: 'Starter', detail: 'Fastest pull' },
+  { value: 3, label: 'Expanded', detail: 'More records' },
+  { value: 5, label: 'Deep', detail: 'Recommended' },
+  { value: 10, label: 'Maximum', detail: 'Largest pull' },
+]
+
 function ImportPage() {
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState([])
@@ -50,6 +57,7 @@ function ImportPage() {
   const [selectedDentistId, setSelectedDentistId] = useState('')
   const [includeGooglePlaces, setIncludeGooglePlaces] = useState(false)
   const [includeWebsiteEnrichment, setIncludeWebsiteEnrichment] = useState(true)
+  const [npiMaxPages, setNpiMaxPages] = useState(5)
   const [npiTestLoading, setNpiTestLoading] = useState(false)
   const [npiTestResult, setNpiTestResult] = useState(null)
   const [connectionForm, setConnectionForm] = useState(defaultConnectionForm)
@@ -425,10 +433,20 @@ function ImportPage() {
               <p>Imports dental providers from the official NPI Registry for NY, NJ, and CT.</p>
             </div>
           </div>
+          <label className="field-group">
+            <span>Import depth</span>
+            <select value={npiMaxPages} onChange={(event) => setNpiMaxPages(Number(event.target.value))}>
+              {npiImportDepthOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} - {option.detail}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="primary-button"
-            onClick={() => handlePipelineAction('NPI import', runNpiImport)}
+            onClick={() => handlePipelineAction('NPI import', () => runNpiImport({ maxPages: npiMaxPages, limit: 200 }))}
             disabled={Boolean(pipelineRunning)}
           >
             <Play size={16} />

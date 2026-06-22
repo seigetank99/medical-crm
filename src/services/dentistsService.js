@@ -397,8 +397,8 @@ export async function getPipelineStatus() {
   }
 }
 
-export async function runNpiImport() {
-  return invokePipelineFunction('import-npi-dentists')
+export async function runNpiImport(options = {}) {
+  return invokePipelineFunction('import-npi-dentists', options)
 }
 
 export async function processEnrichmentQueue(retryFailed = false) {
