@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "npi:bulk": "node scripts/import-nppes-dentists.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

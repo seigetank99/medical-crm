@@ -103,10 +103,15 @@ Allowed dental specialty values:
 
 ```text
 General Dentist
+Dental Public Health
+Dental Anesthesiology
 Orthodontist
 Oral Surgeon
+Oral and Maxillofacial Pathology
+Oral and Maxillofacial Radiology
 Pediatric Dentist
 Periodontist
+Prosthodontist
 Endodontist
 ```
 
@@ -154,18 +159,72 @@ enrich-practice-website
 process-enrichment-queue
 ```
 
-`import-npi-dentists` uses the official NPI Registry API to import dentists from NY, NJ, and CT for these specialties:
+`import-npi-dentists` uses the official NPI Registry API for quick/manual pulls. The API is useful for small batches, but it cannot retrieve every matching record for large states because NPPES caps paged API retrieval. For complete state or nationwide coverage, use the bulk CMS downloadable file importer below.
+
+Both the quick API import and the bulk importer target these specialties:
 
 ```text
 General Dentist
+Dental Public Health
+Dental Anesthesiology
 Orthodontist
 Oral Surgeon
+Oral and Maxillofacial Pathology
+Oral and Maxillofacial Radiology
 Pediatric Dentist
 Periodontist
+Prosthodontist
 Endodontist
 ```
 
-After import, the function creates `enrichment_queue` jobs:
+### Complete NPPES Bulk Import
+
+Use this path when you need every NPI dentist for NY, NJ, CT, or all 50 states.
+
+1. Download the current Monthly NPPES Downloadable File Version 2 ZIP from the official CMS NPI Files page:
+
+```text
+https://download.cms.gov/nppes/NPI_Files.html
+```
+
+2. Extract the main `npidata_pfile_*.csv` into `data/nppes/`:
+
+```bash
+mkdir -p data/nppes
+curl -L "PASTE_CURRENT_MONTHLY_V2_ZIP_URL_HERE" -o data/nppes/nppes.zip
+unzip -j data/nppes/nppes.zip 'npidata_pfile_*.csv' -d data/nppes
+```
+
+3. Add server-side Supabase credentials for the local importer. This file is ignored by git because it ends in `.local`:
+
+```bash
+cat > .env.npi.local <<'EOF'
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+EOF
+```
+
+4. Dry-run NY, NJ, and CT first:
+
+```bash
+npm run npi:bulk -- --csv ./data/nppes/npidata_pfile_*.csv --dry-run
+```
+
+5. Import NY, NJ, and CT:
+
+```bash
+npm run npi:bulk -- --csv ./data/nppes/npidata_pfile_*.csv
+```
+
+6. Later, import all supported states:
+
+```bash
+npm run npi:bulk -- --csv ./data/nppes/npidata_pfile_*.csv --all-states
+```
+
+By default the bulk importer inserts new dentists and skips existing records matched by `npi_number`. Add `--update-existing` when you want the latest NPPES CSV values to overwrite existing CRM fields.
+
+After a quick API import, the Edge Function creates `enrichment_queue` jobs:
 
 - `lead_scoring` for all imported or updated records
 - `osm_enrichment` for records missing website or practice information
